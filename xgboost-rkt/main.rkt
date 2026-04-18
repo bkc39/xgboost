@@ -1,0 +1,19 @@
+#lang racket/base
+
+(require "private/xgboost-native.rkt")
+
+(provide xgboost-version
+         run-regression-demo
+         run-classification-demo)
+
+(module+ main
+  (printf "xgboost version: ~a\n" (xgboost-version))
+  (printf "regression first prediction: ~a\n" (run-regression-demo))
+  (printf "classification first prediction: ~a\n" (run-classification-demo)))
+
+(module+ test
+  (require rackunit)
+  (check-regexp-match #rx"^[0-9]+\\.[0-9]+\\.[0-9]+$" (xgboost-version))
+  (check-pred rational? (run-regression-demo))
+  (define p (run-classification-demo))
+  (check-true (<= 0 p 1)))

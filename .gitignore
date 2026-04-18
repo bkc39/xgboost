@@ -1,0 +1,7 @@
+result
+result-*
+.racket-user/
+cpp/build/
+xgboost-rkt/native-libs/*
+!xgboost-rkt/native-libs/.gitkeep
+**/compiled/
