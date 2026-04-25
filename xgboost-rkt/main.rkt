@@ -4,7 +4,17 @@
 
 (provide xgboost-version
          run-regression-demo
-         run-classification-demo)
+         run-classification-demo
+         dmatrix?
+         dmatrix-create-from-mat
+         dmatrix-set-float-info!
+         dmatrix-free!
+         dmatrix-nrow
+         dmatrix-ncol
+         dmatrix-get-float-info
+         dmatrix-num-non-missing
+         dmatrix->list
+         dmatrix-show)
 
 (module+ main
   (printf "xgboost version: ~a\n" (xgboost-version))

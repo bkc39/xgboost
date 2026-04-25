@@ -1,4 +1,5 @@
 #include "xgbcompat/xgbcompat.hpp"
+#include "internal.hpp"
 
 #include <xgboost/c_api.h>
 
@@ -10,8 +11,6 @@
 
 namespace xgbcompat {
 
-namespace {
-
 thread_local std::string g_last_error;
 
 void check(int rc, const char* where) {
@@ -21,6 +20,8 @@ void check(int rc, const char* where) {
     throw std::runtime_error(g_last_error);
   }
 }
+
+namespace {
 
 DemoResult train_and_predict(const std::vector<float>& features,
                              const std::vector<float>& labels,
