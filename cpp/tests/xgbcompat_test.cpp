@@ -201,6 +201,443 @@ TEST(XgbDMatrixTest, NumNonMissingAndCsrRoundTrip) {
   xgb_dmatrix_free(h);
 }
 
+// ---------------------------------------------------------------------------
+// Booster tests
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Same data shape as run_regression_demo() so we have a known-fittable target.
+struct RegressionFixture {
+  std::vector<float> features;
+  std::vector<float> labels;
+  std::uint64_t nrow;
+  std::uint64_t ncol;
+};
+
+// XGBoost requires `type` in the predict config; "{}" triggers a fatal
+// "Argument `type` is required".  This is the standard inference config.
+constexpr const char* kPredictConfig =
+    "{\"type\":0,\"training\":false,"
+    "\"iteration_begin\":0,\"iteration_end\":0,"
+    "\"strict_shape\":false}";
+
+RegressionFixture make_regression_fixture() {
+  return {
+      /*features=*/{
+          1.0f, 2.0f, 0.5f, 2.0f, 1.0f, 1.5f, 3.0f, 0.5f, 0.0f,
+          0.5f, 3.0f, 2.0f, 4.0f, 2.0f, 1.0f, 1.5f, 1.5f, 0.5f,
+          2.5f, 3.5f, 1.5f, 0.0f, 1.0f, 0.0f,
+      },
+      /*labels=*/{3.5f, 3.5f, 6.5f, 2.0f, 9.0f, 4.0f, 7.0f, 1.0f},
+      /*nrow=*/8,
+      /*ncol=*/3,
+  };
+}
+
+xgb_dmatrix_t make_train_matrix(const RegressionFixture& f) {
+  xgb_dmatrix_t dtrain =
+      xgb_dmatrix_create_from_mat(f.features.data(), f.nrow, f.ncol, -1.0f);
+  if (dtrain) {
+    xgb_dmatrix_set_float_info(dtrain, "label", f.labels.data(),
+                               f.labels.size());
+  }
+  return dtrain;
+}
+
+}  // namespace
+
+TEST(XgbBoosterTest, CreateFreeRoundTrip) {
+  xgb_booster_t b = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(b, nullptr) << "last error: " << xgb_last_error();
+  xgb_booster_free(b);
+}
+
+TEST(XgbBoosterTest, CreateWithCacheRoundTrip) {
+  const auto f = make_regression_fixture();
+  xgb_dmatrix_t dtrain = make_train_matrix(f);
+  ASSERT_NE(dtrain, nullptr);
+  const xgb_dmatrix_t cache[] = {dtrain};
+  xgb_booster_t b = xgb_booster_create(cache, 1);
+  ASSERT_NE(b, nullptr) << "last error: " << xgb_last_error();
+  xgb_booster_free(b);
+  xgb_dmatrix_free(dtrain);
+}
+
+TEST(XgbBoosterTest, CacheLenWithoutPointerIsError) {
+  xgb_booster_t b = xgb_booster_create(nullptr, 1);
+  EXPECT_EQ(b, nullptr);
+  EXPECT_FALSE(std::string(xgb_last_error()).empty());
+}
+
+TEST(XgbBoosterTest, SetParamSuccess) {
+  xgb_booster_t b = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(b, nullptr);
+  EXPECT_EQ(xgb_booster_set_param(b, "objective", "reg:squarederror"), 0);
+  EXPECT_EQ(xgb_booster_set_param(b, "max_depth", "3"), 0);
+  EXPECT_EQ(xgb_booster_set_param(b, "verbosity", "0"), 0);
+  xgb_booster_free(b);
+}
+
+TEST(XgbBoosterTest, TrainAndPredictFitsTrainingData) {
+  const auto f = make_regression_fixture();
+  xgb_dmatrix_t dtrain = make_train_matrix(f);
+  ASSERT_NE(dtrain, nullptr);
+  const xgb_dmatrix_t cache[] = {dtrain};
+  xgb_booster_t b = xgb_booster_create(cache, 1);
+  ASSERT_NE(b, nullptr);
+
+  ASSERT_EQ(xgb_booster_set_param(b, "objective", "reg:squarederror"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "max_depth", "3"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "eta", "0.1"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "verbosity", "0"), 0);
+
+  for (int iter = 0; iter < 50; ++iter) {
+    ASSERT_EQ(xgb_booster_update_one_iter(b, iter, dtrain), 0)
+        << "iter " << iter << " err=" << xgb_last_error();
+  }
+
+  std::vector<float> preds(f.nrow, 0.0f);
+  std::uint64_t out_len = 0;
+  ASSERT_EQ(xgb_booster_predict(b, dtrain, kPredictConfig, preds.size(), preds.data(),
+                                &out_len),
+            0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(out_len, f.nrow);
+
+  double sq_err = 0.0;
+  for (std::size_t i = 0; i < f.labels.size(); ++i) {
+    const double d = preds[i] - f.labels[i];
+    sq_err += d * d;
+  }
+  const double mse = sq_err / static_cast<double>(f.labels.size());
+  EXPECT_LT(mse, 3.0) << "training MSE too high: " << mse;
+
+  xgb_booster_free(b);
+  xgb_dmatrix_free(dtrain);
+}
+
+TEST(XgbBoosterTest, PredictTooSmallBufferReturnsRequiredSize) {
+  const auto f = make_regression_fixture();
+  xgb_dmatrix_t dtrain = make_train_matrix(f);
+  ASSERT_NE(dtrain, nullptr);
+  const xgb_dmatrix_t cache[] = {dtrain};
+  xgb_booster_t b = xgb_booster_create(cache, 1);
+  ASSERT_NE(b, nullptr) << "last error: " << xgb_last_error();
+  ASSERT_EQ(xgb_booster_set_param(b, "objective", "reg:squarederror"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "verbosity", "0"), 0);
+  ASSERT_EQ(xgb_booster_update_one_iter(b, 0, dtrain), 0)
+      << "last error: " << xgb_last_error();
+
+  // Capacity 0, NULL buffer: pure size probe.
+  std::uint64_t out_len = 0;
+  EXPECT_EQ(xgb_booster_predict(b, dtrain, kPredictConfig, 0, nullptr, &out_len), 2);
+  EXPECT_EQ(out_len, f.nrow);
+
+  // Capacity smaller than required: still rc=2, no copy.
+  std::vector<float> small(f.nrow - 1, -42.0f);
+  out_len = 0;
+  EXPECT_EQ(xgb_booster_predict(b, dtrain, kPredictConfig, small.size(), small.data(),
+                                &out_len),
+            2);
+  EXPECT_EQ(out_len, f.nrow);
+  for (float v : small) EXPECT_FLOAT_EQ(v, -42.0f);
+
+  // Resize and retry — should succeed now.
+  std::vector<float> full(out_len, 0.0f);
+  EXPECT_EQ(
+      xgb_booster_predict(b, dtrain, kPredictConfig, full.size(), full.data(), &out_len),
+      0);
+  EXPECT_EQ(out_len, f.nrow);
+
+  xgb_booster_free(b);
+  xgb_dmatrix_free(dtrain);
+}
+
+TEST(XgbBoosterTest, PredictTwiceProducesIdenticalResults) {
+  // Sanity-check the copy: with a deterministic model, calling predict twice
+  // must yield byte-identical floats.  If the shim leaked the booster-owned
+  // buffer, the second call could perturb the first result.
+  const auto f = make_regression_fixture();
+  xgb_dmatrix_t dtrain = make_train_matrix(f);
+  ASSERT_NE(dtrain, nullptr);
+  const xgb_dmatrix_t cache[] = {dtrain};
+  xgb_booster_t b = xgb_booster_create(cache, 1);
+  ASSERT_NE(b, nullptr);
+  ASSERT_EQ(xgb_booster_set_param(b, "objective", "reg:squarederror"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "verbosity", "0"), 0);
+  for (int iter = 0; iter < 10; ++iter) {
+    ASSERT_EQ(xgb_booster_update_one_iter(b, iter, dtrain), 0);
+  }
+
+  std::vector<float> first(f.nrow, 0.0f);
+  std::vector<float> second(f.nrow, 0.0f);
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_predict(b, dtrain, kPredictConfig, first.size(), first.data(),
+                                &len),
+            0);
+  ASSERT_EQ(xgb_booster_predict(b, dtrain, kPredictConfig, second.size(), second.data(),
+                                &len),
+            0);
+  for (std::size_t i = 0; i < f.nrow; ++i) {
+    EXPECT_FLOAT_EQ(first[i], second[i]) << "i=" << i;
+  }
+
+  xgb_booster_free(b);
+  xgb_dmatrix_free(dtrain);
+}
+
+// ---------------------------------------------------------------------------
+// Booster save/load tests
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Train a small regressor for serialization tests.  Returns owned handles;
+// callers must free both.
+struct TrainedModel {
+  xgb_booster_t booster;
+  xgb_dmatrix_t dtrain;
+  std::vector<float> baseline_predictions;
+};
+
+TrainedModel train_small_regressor(int rounds) {
+  TrainedModel out{};
+  const auto f = make_regression_fixture();
+  out.dtrain = make_train_matrix(f);
+  if (!out.dtrain) return out;
+  const xgb_dmatrix_t cache[] = {out.dtrain};
+  out.booster = xgb_booster_create(cache, 1);
+  if (!out.booster) return out;
+  xgb_booster_set_param(out.booster, "objective", "reg:squarederror");
+  xgb_booster_set_param(out.booster, "max_depth", "3");
+  xgb_booster_set_param(out.booster, "eta", "0.1");
+  xgb_booster_set_param(out.booster, "verbosity", "0");
+  for (int i = 0; i < rounds; ++i) {
+    xgb_booster_update_one_iter(out.booster, i, out.dtrain);
+  }
+  out.baseline_predictions.assign(f.nrow, 0.0f);
+  std::uint64_t len = 0;
+  xgb_booster_predict(out.booster, out.dtrain, kPredictConfig,
+                      out.baseline_predictions.size(),
+                      out.baseline_predictions.data(), &len);
+  return out;
+}
+
+std::string make_temp_path(const char* suffix) {
+  // testing::TempDir is gtest's per-run scratch space; cleaned up by the
+  // harness.  Suffix controls the format XGBoost picks (json/ubj).
+  return ::testing::TempDir() + "xgbcompat_model_" +
+         std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
+         suffix;
+}
+
+}  // namespace
+
+TEST(XgbBoosterSerdeTest, SaveLoadFileRoundTrip) {
+  TrainedModel m = train_small_regressor(20);
+  ASSERT_NE(m.booster, nullptr);
+  ASSERT_NE(m.dtrain, nullptr);
+
+  const std::string path = make_temp_path(".json");
+  ASSERT_EQ(xgb_booster_save_model(m.booster, path.c_str()), 0)
+      << "last error: " << xgb_last_error();
+
+  // Fresh booster, load, predict, compare.
+  xgb_booster_t loaded = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(loaded, nullptr);
+  ASSERT_EQ(xgb_booster_load_model(loaded, path.c_str()), 0)
+      << "last error: " << xgb_last_error();
+
+  std::vector<float> preds(m.baseline_predictions.size(), 0.0f);
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_predict(loaded, m.dtrain, kPredictConfig,
+                                preds.size(), preds.data(), &len),
+            0);
+  for (std::size_t i = 0; i < preds.size(); ++i) {
+    EXPECT_FLOAT_EQ(preds[i], m.baseline_predictions[i]) << "i=" << i;
+  }
+
+  xgb_booster_free(loaded);
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterSerdeTest, SaveToBufferTooSmallReportsRequiredSize) {
+  TrainedModel m = train_small_regressor(5);
+  ASSERT_NE(m.booster, nullptr);
+
+  // Size probe: capacity 0, NULL buffer.
+  std::uint64_t need = 0;
+  EXPECT_EQ(xgb_booster_save_model_to_buffer(m.booster, "{\"format\":\"ubj\"}",
+                                             0, nullptr, &need),
+            2);
+  EXPECT_GT(need, 0u);
+
+  // Capacity smaller than required: still rc=2, no copy.
+  std::vector<char> small(need - 1, '\0');
+  std::uint64_t need2 = 0;
+  EXPECT_EQ(xgb_booster_save_model_to_buffer(m.booster, "{\"format\":\"ubj\"}",
+                                             small.size(), small.data(),
+                                             &need2),
+            2);
+  EXPECT_EQ(need2, need);
+
+  // Resize and succeed.
+  std::vector<char> full(need, '\0');
+  EXPECT_EQ(xgb_booster_save_model_to_buffer(m.booster, "{\"format\":\"ubj\"}",
+                                             full.size(), full.data(),
+                                             &need2),
+            0);
+  EXPECT_EQ(need2, need);
+
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterSerdeTest, SaveLoadBufferRoundTrip) {
+  TrainedModel m = train_small_regressor(20);
+  ASSERT_NE(m.booster, nullptr);
+
+  // Size, then serialize.
+  std::uint64_t need = 0;
+  ASSERT_EQ(xgb_booster_save_model_to_buffer(m.booster, "{\"format\":\"ubj\"}",
+                                             0, nullptr, &need),
+            2);
+  std::vector<char> buf(need, '\0');
+  std::uint64_t got = 0;
+  ASSERT_EQ(xgb_booster_save_model_to_buffer(m.booster, "{\"format\":\"ubj\"}",
+                                             buf.size(), buf.data(), &got),
+            0);
+  ASSERT_EQ(got, need);
+
+  // Deserialize into a fresh booster and compare predictions.
+  xgb_booster_t loaded = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(loaded, nullptr);
+  ASSERT_EQ(xgb_booster_load_model_from_buffer(loaded, buf.data(), buf.size()),
+            0)
+      << "last error: " << xgb_last_error();
+
+  std::vector<float> preds(m.baseline_predictions.size(), 0.0f);
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_predict(loaded, m.dtrain, kPredictConfig,
+                                preds.size(), preds.data(), &len),
+            0);
+  for (std::size_t i = 0; i < preds.size(); ++i) {
+    EXPECT_FLOAT_EQ(preds[i], m.baseline_predictions[i]) << "i=" << i;
+  }
+
+  xgb_booster_free(loaded);
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+// ---------------------------------------------------------------------------
+// Booster eval-one-iter
+// ---------------------------------------------------------------------------
+
+TEST(XgbBoosterEvalTest, ReturnsLineContainingProvidedNames) {
+  TrainedModel m = train_small_regressor(5);
+  ASSERT_NE(m.booster, nullptr);
+
+  const xgb_dmatrix_t dmats[] = {m.dtrain};
+  const char* names[] = {"train"};
+  std::vector<char> buf(512, '\0');
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_eval_one_iter(m.booster, /*iter=*/4, dmats, names, 1,
+                                      buf.size(), buf.data(), &len),
+            0)
+      << "last error: " << xgb_last_error();
+  ASSERT_GT(len, 0u);
+  const std::string line(buf.data(), len);
+  // Format: "[<iter>]\t<name>-<metric>:<value>"
+  EXPECT_NE(line.find("[4]"), std::string::npos) << line;
+  EXPECT_NE(line.find("train-"), std::string::npos) << line;
+  EXPECT_NE(line.find(":"), std::string::npos) << line;
+
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterEvalTest, TooSmallBufferReportsRequiredSize) {
+  TrainedModel m = train_small_regressor(2);
+  ASSERT_NE(m.booster, nullptr);
+
+  const xgb_dmatrix_t dmats[] = {m.dtrain};
+  const char* names[] = {"train"};
+
+  // Size probe: capacity 0, NULL buffer.
+  std::uint64_t need = 0;
+  EXPECT_EQ(xgb_booster_eval_one_iter(m.booster, 0, dmats, names, 1,
+                                      0, nullptr, &need),
+            2);
+  EXPECT_GT(need, 0u);
+
+  // Capacity smaller than required: still rc=2, no copy.
+  std::vector<char> small(need - 1, '\0');
+  std::uint64_t need2 = 0;
+  EXPECT_EQ(xgb_booster_eval_one_iter(m.booster, 0, dmats, names, 1,
+                                      small.size(), small.data(), &need2),
+            2);
+  EXPECT_EQ(need2, need);
+
+  // Resize and succeed.
+  std::vector<char> full(need, '\0');
+  std::uint64_t got = 0;
+  EXPECT_EQ(xgb_booster_eval_one_iter(m.booster, 0, dmats, names, 1,
+                                      full.size(), full.data(), &got),
+            0);
+  EXPECT_EQ(got, need);
+
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterEvalTest, MultipleDMatricesProduceMultipleMetrics) {
+  // Two different DMatrices labeled "train" / "eval"; the result line must
+  // contain both name prefixes.  We use the same fixture twice for
+  // simplicity — the labels are what matters here.
+  const auto f = make_regression_fixture();
+  xgb_dmatrix_t dtrain = make_train_matrix(f);
+  xgb_dmatrix_t deval = make_train_matrix(f);
+  ASSERT_NE(dtrain, nullptr);
+  ASSERT_NE(deval, nullptr);
+  const xgb_dmatrix_t cache[] = {dtrain};
+  xgb_booster_t b = xgb_booster_create(cache, 1);
+  ASSERT_NE(b, nullptr);
+  ASSERT_EQ(xgb_booster_set_param(b, "objective", "reg:squarederror"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "verbosity", "0"), 0);
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_EQ(xgb_booster_update_one_iter(b, i, dtrain), 0);
+  }
+
+  const xgb_dmatrix_t dmats[] = {dtrain, deval};
+  const char* names[] = {"train", "eval"};
+  std::vector<char> buf(1024, '\0');
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_eval_one_iter(b, 2, dmats, names, 2,
+                                      buf.size(), buf.data(), &len),
+            0);
+  const std::string line(buf.data(), len);
+  EXPECT_NE(line.find("train-"), std::string::npos) << line;
+  EXPECT_NE(line.find("eval-"), std::string::npos) << line;
+
+  xgb_booster_free(b);
+  xgb_dmatrix_free(deval);
+  xgb_dmatrix_free(dtrain);
+}
+
+TEST(XgbBoosterSerdeTest, LoadFromGarbageBufferFails) {
+  xgb_booster_t b = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(b, nullptr);
+  const std::vector<char> garbage(64, 'x');
+  EXPECT_NE(
+      xgb_booster_load_model_from_buffer(b, garbage.data(), garbage.size()),
+      0);
+  EXPECT_FALSE(std::string(xgb_last_error()).empty());
+  xgb_booster_free(b);
+}
+
 TEST(XgbDMatrixTest, LeakSmokeTest) {
   // Allocate + free 10k DMatrices; RSS must not balloon.  ru_maxrss units
   // differ by platform (macOS = bytes, Linux = KB).

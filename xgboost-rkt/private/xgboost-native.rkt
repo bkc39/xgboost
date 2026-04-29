@@ -23,7 +23,24 @@
   [dmatrix-get-float-info (-> dmatrix? string? f32vector?)]
   [dmatrix-num-non-missing (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix->list (-> dmatrix? (listof (listof real?)))]
-  [dmatrix-show (->* (dmatrix?) (output-port?) void?)]))
+  [dmatrix-show (->* (dmatrix?) (output-port?) void?)]
+  [booster? (-> any/c boolean?)]
+  [booster-create (->* () ((listof dmatrix?)) booster?)]
+  [booster-free! (-> booster? void?)]
+  [booster-set-param! (-> booster? string? string? void?)]
+  [booster-update-one-iter! (-> booster? exact-integer? dmatrix? void?)]
+  [booster-predict
+   (->* (booster? dmatrix?) (#:config string?) f32vector?)]
+  [booster-save-model! (-> booster? path-string? void?)]
+  [booster-load-model! (-> booster? path-string? void?)]
+  [booster-save-model-to-bytes
+   (->* (booster?) (#:format (or/c "json" "ubj")) bytes?)]
+  [booster-load-model-from-bytes! (-> booster? bytes? void?)]
+  [booster-eval-one-iter
+   (-> booster? exact-integer?
+       (listof (cons/c string? dmatrix?))
+       string?)]
+  [parse-eval-line (-> string? (hash/c string? real?))]))
 
 (define (xgboost-version)
   (xgb-version/raw))
@@ -196,8 +213,151 @@
     (when rows-truncated?
       (fprintf port "  ...\n"))))
 
+;; ---------------------------------------------------------------------------
+;; Booster wrappers.
+;;
+;; Same lifetime model as DMatrix: allocator/deallocator wired at the raw
+;; layer, explicit `booster-free!` flips the cpointer tag so a second call
+;; raises a contract error rather than double-freeing.
+;;
+;; XGBoost's predict API requires a JSON config with `type` set; "{}" raises
+;; a fatal "Argument `type` is required".  `booster-predict` defaults to
+;; inference-mode predictions over all iterations.
+;; ---------------------------------------------------------------------------
+
+(define (booster? v) (Booster? v))
+
+(define booster-default-predict-config
+  (string-append
+   "{\"type\":0,\"training\":false,"
+   "\"iteration_begin\":0,\"iteration_end\":0,"
+   "\"strict_shape\":false}"))
+
+(define (booster-create [cache '()])
+  (define h (xgb-booster-create/raw cache))
+  (unless h
+    (error 'booster-create
+           "XGBoost returned NULL handle: ~a" (xgb-last-error/raw)))
+  h)
+
+(define (booster-free! h)
+  (when (cpointer-has-tag? h 'Booster)
+    (xgb-booster-free/raw h)
+    (set-cpointer-tag! h 'Booster-freed)))
+
+(define (booster-set-param! h key value)
+  (check-ok (xgb-booster-set-param/raw h key value) 'booster-set-param!))
+
+(define (booster-update-one-iter! h iter dtrain)
+  (check-ok (xgb-booster-update-one-iter/raw h iter dtrain)
+            'booster-update-one-iter!))
+
+;; Predict against `dmat`, returning a fresh f32vector sized to whatever
+;; XGBoost emitted.  Uses an opportunistic two-step retry: size for the
+;; common reg/binary case (`nrow` predictions), and if XGBoost wants more
+;; (e.g. multi-class), resize and call again.  The booster-owned buffer is
+;; copied on the C side, so it never escapes.
+(define (booster-predict h dmat
+                         #:config [config booster-default-predict-config])
+  (define guess (max 1 (dmatrix-nrow dmat)))
+  (define buf (make-f32vector guess))
+  (define-values (rc len) (xgb-booster-predict/raw h dmat config guess buf))
+  (cond
+    [(zero? rc)
+     ;; The full prediction fit in `buf`, but `len` may be smaller than
+     ;; capacity (rare in practice).  Trim to the reported size.
+     (cond
+       [(= len guess) buf]
+       [else
+        (define trimmed (make-f32vector len))
+        (memcpy (f32vector->cpointer trimmed) (f32vector->cpointer buf)
+                len _float)
+        trimmed])]
+    [(= rc 2)
+     ;; Buffer too small; resize and retry.  `len` holds the required size.
+     (define buf2 (make-f32vector len))
+     (define-values (rc2 len2) (xgb-booster-predict/raw h dmat config len buf2))
+     (check-ok rc2 'booster-predict)
+     (unless (= len2 len)
+       (error 'booster-predict
+              "expected ~a predictions, got ~a" len len2))
+     buf2]
+    [else (check-ok rc 'booster-predict)]))
+
+;; --- Save / load --------------------------------------------------------
+
+(define (booster-save-model! h path)
+  (check-ok (xgb-booster-save-model/raw h path) 'booster-save-model!))
+
+(define (booster-load-model! h path)
+  (check-ok (xgb-booster-load-model/raw h path) 'booster-load-model!))
+
+;; Serialize a booster to a fresh bytes object.  `format` is "ubj" (compact
+;; binary, default) or "json" (human-readable).  Same size-then-fill dance
+;; as predict: probe to get the required length, allocate, refill.
+(define (booster-save-model-to-bytes h #:format [fmt "ubj"])
+  (define config (string-append "{\"format\":\"" fmt "\"}"))
+  (define-values (rc len)
+    (xgb-booster-save-model-to-buffer/raw h config 0 (make-bytes 0)))
+  (cond
+    [(zero? rc) (make-bytes len)]   ; degenerate: 0-byte model
+    [(= rc 2)
+     (define buf (make-bytes len))
+     (define-values (rc2 len2)
+       (xgb-booster-save-model-to-buffer/raw h config len buf))
+     (check-ok rc2 'booster-save-model-to-bytes)
+     (unless (= len2 len)
+       (error 'booster-save-model-to-bytes
+              "expected ~a bytes, got ~a" len len2))
+     buf]
+    [else (check-ok rc 'booster-save-model-to-bytes)]))
+
+(define (booster-load-model-from-bytes! h buf)
+  (check-ok (xgb-booster-load-model-from-buffer/raw h buf)
+            'booster-load-model-from-bytes!))
+
+;; --- Eval one iter ------------------------------------------------------
+
+;; `eval-set` is a list of (name . dmatrix) pairs, in the order their
+;; metrics should appear in the result line.  Returns a string like
+;;   "[<iter>]\t<name>-<metric>:<value>\t..."
+;; matching the format XGBoost prints during default training.
+(define (booster-eval-one-iter h iter eval-set)
+  (define dmats (map cdr eval-set))
+  (define names (map car eval-set))
+  ;; Typical line is well under 256 chars even with several metrics; over-
+  ;; allocate to avoid the resize round-trip in the common case.
+  (define guess 512)
+  (define buf (make-bytes guess))
+  (define-values (rc len)
+    (xgb-booster-eval-one-iter/raw h iter dmats names guess buf))
+  (cond
+    [(zero? rc) (bytes->string/utf-8 buf #f 0 len)]
+    [(= rc 2)
+     (define buf2 (make-bytes len))
+     (define-values (rc2 len2)
+       (xgb-booster-eval-one-iter/raw h iter dmats names len buf2))
+     (check-ok rc2 'booster-eval-one-iter)
+     (bytes->string/utf-8 buf2 #f 0 len2)]
+    [else (check-ok rc 'booster-eval-one-iter)]))
+
+;; Parse a metric line into a hash from "<name>-<metric>" to numeric value.
+;; The leading "[<iter>]" token is dropped; any token that is not of the
+;; shape "<key>:<number>" is silently skipped.  Greedy `(.*)` on the key
+;; means metric names containing additional colons would be misparsed, but
+;; XGBoost's built-in metrics never do that.
+(define (parse-eval-line line)
+  (define parts (regexp-split #rx"\t" line))
+  (for/hash ([part (in-list (if (pair? parts) (cdr parts) '()))]
+             #:when (regexp-match? #rx":" part))
+    (define m (regexp-match #rx"^(.*):([^:]+)$" part))
+    (define key (cadr m))
+    (define val (string->number (caddr m)))
+    (values key (if (real? val) val +nan.0))))
+
 (module+ test
-  (require rackunit)
+  (require rackunit
+           racket/file)
 
   ;; Existing smoke tests.
   (check-regexp-match #rx"^[0-9]+\\.[0-9]+\\.[0-9]+$" (xgboost-version))
@@ -376,4 +536,169 @@
     (for ([_ (in-range 256)])
       (dmatrix-create-from-mat (make-data) 2 3))
     (collect-garbage) (collect-garbage) (collect-garbage)
-    (check-true #t)))
+    (check-true #t))
+
+  ;; --- Booster -----------------------------------------------------------
+
+  ;; Same fixture as the gtest regression test: 8x3, label ≈ 2*x0 + x1 - x2.
+  (define (regression-features)
+    (f32vector 1.0 2.0 0.5 2.0 1.0 1.5 3.0 0.5 0.0
+               0.5 3.0 2.0 4.0 2.0 1.0 1.5 1.5 0.5
+               2.5 3.5 1.5 0.0 1.0 0.0))
+  (define (regression-labels)
+    (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0))
+
+  (define (make-trained-regressor #:rounds [rounds 50])
+    (define dtrain (dmatrix-create-from-mat (regression-features) 8 3))
+    (dmatrix-set-float-info! dtrain "label" (regression-labels))
+    (define b (booster-create (list dtrain)))
+    (booster-set-param! b "objective" "reg:squarederror")
+    (booster-set-param! b "max_depth" "3")
+    (booster-set-param! b "eta" "0.1")
+    (booster-set-param! b "verbosity" "0")
+    (for ([iter (in-range rounds)])
+      (booster-update-one-iter! b iter dtrain))
+    (values b dtrain))
+
+  (test-case "booster create/free round-trip"
+    (define b (booster-create))
+    (check-pred booster? b)
+    (booster-free! b))
+
+  (test-case "booster-free! is idempotent (tag guard)"
+    (define b (booster-create))
+    (booster-free! b)
+    (booster-free! b))   ; no-op; must not crash
+
+  (test-case "booster-set-param! accepts known params"
+    (define b (booster-create))
+    (booster-set-param! b "objective" "reg:squarederror")
+    (booster-set-param! b "max_depth" "3")
+    (booster-free! b))
+
+  (test-case "booster fits training data (MSE under threshold)"
+    (define-values (b dtrain) (make-trained-regressor))
+    (define preds (booster-predict b dtrain))
+    (check-equal? (f32vector-length preds) 8)
+    (define labels (regression-labels))
+    (define mse
+      (/ (for/sum ([i (in-range 8)])
+           (define d (- (f32vector-ref preds i) (f32vector-ref labels i)))
+           (* d d))
+         8))
+    (check-true (< mse 3.0)
+                (format "training MSE too high: ~a" mse))
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "booster-predict copies; second call doesn't disturb the first"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 10))
+    (define first (booster-predict b dtrain))
+    (define snapshot (f32vector->list first))
+    (booster-predict b dtrain)              ; second call, result discarded
+    (check-equal? (f32vector->list first) snapshot)
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "booster finalizer path: GC reclaims without explicit free"
+    (for ([_ (in-range 64)])
+      (booster-create))
+    (collect-garbage) (collect-garbage) (collect-garbage)
+    (check-true #t))
+
+  ;; --- Save / load ------------------------------------------------------
+
+  (test-case "save/load via file: predictions survive serde"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 20))
+    (define baseline (booster-predict b dtrain))
+    (define tmp (make-temporary-file "xgbrkt-~a.json"))
+    (dynamic-wind
+      void
+      (lambda ()
+        (booster-save-model! b tmp)
+        (define b2 (booster-create))
+        (booster-load-model! b2 tmp)
+        (define preds (booster-predict b2 dtrain))
+        (check-equal? (f32vector->list preds) (f32vector->list baseline))
+        (booster-free! b2))
+      (lambda () (when (file-exists? tmp) (delete-file tmp))))
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "save/load via bytes (ubj): predictions survive serde"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 20))
+    (define baseline (booster-predict b dtrain))
+    (define blob (booster-save-model-to-bytes b))
+    (check-pred bytes? blob)
+    (check-true (> (bytes-length blob) 0))
+    (define b2 (booster-create))
+    (booster-load-model-from-bytes! b2 blob)
+    (check-equal? (f32vector->list (booster-predict b2 dtrain))
+                  (f32vector->list baseline))
+    (booster-free! b2)
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "save/load via bytes (json): produces a JSON-shaped blob"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 5))
+    (define blob (booster-save-model-to-bytes b #:format "json"))
+    ;; First non-whitespace byte of an XGBoost JSON model is '{'.
+    (check-equal? (bytes-ref blob 0) (char->integer #\{))
+    (define b2 (booster-create))
+    (booster-load-model-from-bytes! b2 blob)
+    (check-equal?
+     (f32vector->list (booster-predict b2 dtrain))
+     (f32vector->list (booster-predict b dtrain)))
+    (booster-free! b2)
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "load-from-bytes on garbage raises with C error context"
+    (define b (booster-create))
+    (check-exn (lambda (e)
+                 (and (exn:fail? e)
+                      (regexp-match? #rx"XGBoosterLoadModelFromBuffer"
+                                     (exn-message e))))
+               (lambda ()
+                 (booster-load-model-from-bytes! b (make-bytes 64 65))))
+    (booster-free! b))
+
+  ;; --- Eval one iter ----------------------------------------------------
+
+  (test-case "parse-eval-line: typical XGBoost output"
+    (define h (parse-eval-line "[3]\ttrain-rmse:1.2345\teval-rmse:2.3456"))
+    (check-equal? (hash-count h) 2)
+    (check-= (hash-ref h "train-rmse") 1.2345 1e-9)
+    (check-= (hash-ref h "eval-rmse")  2.3456 1e-9))
+
+  (test-case "parse-eval-line: header-only / malformed input"
+    (check-equal? (hash-count (parse-eval-line "[0]")) 0)
+    (check-equal? (hash-count (parse-eval-line "")) 0))
+
+  (test-case "booster-eval-one-iter returns the iter and named metrics"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 5))
+    (define line (booster-eval-one-iter b 4 (list (cons "train" dtrain))))
+    (check-true (regexp-match? #rx"^\\[4\\]" line)
+                (format "expected line to start with [4]: ~s" line))
+    (define metrics (parse-eval-line line))
+    (check-true (hash-has-key? metrics "train-rmse")
+                (format "expected train-rmse in ~s" metrics))
+    (check-true (real? (hash-ref metrics "train-rmse")))
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "booster-eval-one-iter handles the resize-on-rc=2 path"
+    ;; Force the rc=2 retry by jamming the eval-line through with many
+    ;; eval matrices labeled with long names — that pushes the result
+    ;; string past the 512-byte fast-path guess.
+    (define-values (b dtrain) (make-trained-regressor #:rounds 1))
+    (define long-name (make-string 30 #\x))   ; 30 chars per dataset
+    (define eval-set
+      (for/list ([i (in-range 32)])           ; 32 entries × ~50 chars > 512
+        (cons (format "~a~a" long-name i) dtrain)))
+    (define line (booster-eval-one-iter b 0 eval-set))
+    (check-true (> (string-length line) 512))
+    (define metrics (parse-eval-line line))
+    (check-equal? (hash-count metrics) 32)
+    (booster-free! b)
+    (dmatrix-free! dtrain)))

@@ -20,7 +20,20 @@
          xgb-dmatrix-num-col/raw
          xgb-dmatrix-get-float-info/raw
          xgb-dmatrix-num-non-missing/raw
-         xgb-dmatrix-get-data-as-csr/raw)
+         xgb-dmatrix-get-data-as-csr/raw
+         _Booster
+         _Booster/null
+         Booster?
+         xgb-booster-free/raw
+         xgb-booster-create/raw
+         xgb-booster-set-param/raw
+         xgb-booster-update-one-iter/raw
+         xgb-booster-predict/raw
+         xgb-booster-save-model/raw
+         xgb-booster-load-model/raw
+         xgb-booster-save-model-to-buffer/raw
+         xgb-booster-load-model-from-buffer/raw
+         xgb-booster-eval-one-iter/raw)
 
 (define-runtime-path native-libs-dir "../native-libs")
 
@@ -121,3 +134,98 @@
         (data : _f32vector)
         -> _int)
   #:c-id xgb_dmatrix_get_data_as_csr)
+
+;; ---------------------------------------------------------------------------
+;; Booster: opaque handle.  Same allocator/deallocator pattern as DMatrix.
+;; The cache argument to `create` is a list of DMatrix handles passed as a
+;; C array of `void*`; `(_list i _DMatrix)` does the marshalling and feeds
+;; the length via the auxiliary `_size` argument.
+;; ---------------------------------------------------------------------------
+
+(define-cpointer-type _Booster)
+
+(define-xgb xgb-booster-free/raw
+  (_fun _Booster -> _void)
+  #:c-id xgb_booster_free
+  #:wrap (deallocator))
+
+(define-xgb xgb-booster-create/raw
+  (_fun (cache : (_list i _DMatrix))
+        (_size = (length cache))
+        -> _Booster/null)
+  #:c-id xgb_booster_create
+  #:wrap (allocator xgb-booster-free/raw))
+
+(define-xgb xgb-booster-set-param/raw
+  (_fun _Booster _string/utf-8 _string/utf-8 -> _int)
+  #:c-id xgb_booster_set_param)
+
+(define-xgb xgb-booster-update-one-iter/raw
+  (_fun _Booster _int _DMatrix -> _int)
+  #:c-id xgb_booster_update_one_iter)
+
+;; predict:
+;;   capacity:  number of floats writable in `buf` (callers pass
+;;              (f32vector-length buf)).
+;;   buf:       caller-owned scratch buffer.  Untouched on rc=2.
+;;   out-len:   always written with the total predictions XGBoost produced.
+;; Return values match the C contract: 0 success, 1 error, 2 buffer too small.
+(define-xgb xgb-booster-predict/raw
+  (_fun _Booster
+        _DMatrix
+        _string/utf-8
+        (capacity : _uint64)
+        (buf : _f32vector)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_predict)
+
+;; Save/load model to/from a filesystem path.  XGBoost picks the format
+;; from the extension (.json or .ubj recommended).
+(define-xgb xgb-booster-save-model/raw
+  (_fun _Booster _path -> _int)
+  #:c-id xgb_booster_save_model)
+
+(define-xgb xgb-booster-load-model/raw
+  (_fun _Booster _path -> _int)
+  #:c-id xgb_booster_load_model)
+
+;; save_model_to_buffer mirrors predict's "size-or-fill" contract.  Caller
+;; allocates `buf` of `capacity` bytes; on rc=2, `out-len` is the required
+;; capacity and nothing was copied.
+(define-xgb xgb-booster-save-model-to-buffer/raw
+  (_fun _Booster
+        _string/utf-8
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_save_model_to_buffer)
+
+;; load_model_from_buffer takes a (data, len) pair.  We pass the bytes
+;; pointer and length explicitly so Racket bytes objects round-trip without
+;; assuming null-termination.
+(define-xgb xgb-booster-load-model-from-buffer/raw
+  (_fun _Booster
+        (buf : _bytes)
+        (_uint64 = (bytes-length buf))
+        -> _int)
+  #:c-id xgb_booster_load_model_from_buffer)
+
+;; XGBoosterEvalOneIter takes parallel arrays of DMatrix handles + names.
+;; The C shim copies the result into `buf`; rc=2 / out-len communicates
+;; the required size, mirroring predict + save_model_to_buffer.
+(define-xgb xgb-booster-eval-one-iter/raw
+  (_fun _Booster
+        (iter : _int)
+        (dmats : (_list i _DMatrix))
+        (names : (_list i _string/utf-8))
+        (_size = (length dmats))
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_eval_one_iter)
