@@ -20,6 +20,10 @@
 (provide
  (contract-out
   [xgboost-version (-> string?)]
+  [xgboost-build-info (-> string?)]
+  [xgboost-get-global-config (-> string?)]
+  [xgboost-set-global-config! (-> string? void?)]
+  [xgboost-register-log-callback! (-> (-> string? any/c) void?)]
   [make-dmatrix
    (->* (any/c)
         (#:nrow (or/c #f exact-positive-integer?)
@@ -59,6 +63,10 @@
  booster?)
 
 (define xgboost-version ffi:xgboost-version)
+(define xgboost-build-info ffi:xgboost-build-info)
+(define xgboost-get-global-config ffi:xgboost-get-global-config)
+(define xgboost-set-global-config! ffi:xgboost-set-global-config!)
+(define xgboost-register-log-callback! ffi:xgboost-register-log-callback!)
 (define parse-eval-line ffi:parse-eval-line)
 
 (define (sequence->f32vector who xs)
@@ -251,6 +259,7 @@
            "ffi/raw.rkt")
 
   (check-regexp-match #rx"^[0-9]+\\.[0-9]+\\.[0-9]+$" (xgboost-version))
+  (check-regexp-match #rx"^\\{" (xgboost-build-info))
   (check-true (procedure? xgb-version/raw))
   (check-true (procedure? ffi:xgboost-version))
 

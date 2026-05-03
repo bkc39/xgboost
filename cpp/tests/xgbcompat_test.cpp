@@ -80,6 +80,45 @@ TEST(XgbCompatTest, ExternCClassificationReturnsProbability) {
   EXPECT_LE(first, 1.0);
 }
 
+TEST(XgbCompatTest, BuildInfoReturnsJson) {
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_build_info(0, nullptr, &len), 2)
+      << "last error: " << xgb_last_error();
+  ASSERT_GT(len, 0u);
+  std::string info(len, '\0');
+  ASSERT_EQ(xgb_build_info(info.size(), info.data(), &len), 0)
+      << "last error: " << xgb_last_error();
+  EXPECT_FALSE(info.empty());
+  EXPECT_EQ(info.front(), '{');
+}
+
+TEST(XgbCompatTest, GlobalConfigRoundTrip) {
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_get_global_config(0, nullptr, &len), 2)
+      << "last error: " << xgb_last_error();
+  std::string before(len, '\0');
+  ASSERT_EQ(xgb_get_global_config(before.size(), before.data(), &len), 0)
+      << "last error: " << xgb_last_error();
+
+  ASSERT_EQ(xgb_set_global_config("{\"verbosity\":0}"), 0)
+      << "last error: " << xgb_last_error();
+  len = 0;
+  ASSERT_EQ(xgb_get_global_config(0, nullptr, &len), 2)
+      << "last error: " << xgb_last_error();
+  std::string after(len, '\0');
+  ASSERT_EQ(xgb_get_global_config(after.size(), after.data(), &len), 0)
+      << "last error: " << xgb_last_error();
+  EXPECT_NE(after.find("\"verbosity\":0"), std::string::npos);
+
+  ASSERT_EQ(xgb_set_global_config(before.c_str()), 0)
+      << "last error: " << xgb_last_error();
+}
+
+TEST(XgbCompatTest, SetGlobalConfigRejectsBadJson) {
+  EXPECT_NE(xgb_set_global_config("{not-json"), 0);
+  EXPECT_FALSE(std::string(xgb_last_error()).empty());
+}
+
 TEST(XgbDMatrixTest, CreateFreeRoundTrip) {
   const std::vector<float> data = {
       1.0f, 2.0f, 3.0f,

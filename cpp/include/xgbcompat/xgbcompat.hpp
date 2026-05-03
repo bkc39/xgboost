@@ -33,6 +33,27 @@ int xgb_run_regression_demo(double* out_first_prediction);
 
 int xgb_run_classification_demo(double* out_first_prediction);
 
+/* Return XGBoost build information as a UTF-8 JSON string.
+ *
+ * Same size-then-fill contract as booster prediction/string APIs:
+ *   0: success, `*out_len` bytes written into `out_buffer`
+ *   1: error — call `xgb_last_error()`
+ *   2: out_buffer too small; `*out_len` holds the required size */
+int xgb_build_info(uint64_t buffer_capacity,
+                   char* out_buffer,
+                   uint64_t* out_len);
+
+/* Read and write XGBoost's process-global JSON configuration. */
+int xgb_get_global_config(uint64_t buffer_capacity,
+                          char* out_buffer,
+                          uint64_t* out_len);
+int xgb_set_global_config(const char* config);
+
+/* Register a process-global XGBoost log callback.  The caller owns the
+ * function pointer lifetime and must keep it alive for as long as XGBoost may
+ * invoke it. */
+int xgb_register_log_callback(void (*callback)(const char*));
+
 /* Opaque handle for an XGBoost DMatrix.  The caller is responsible for
  * pairing each successful `xgb_dmatrix_create_*` with exactly one
  * `xgb_dmatrix_free`.  Errors set the thread-local buffer read by

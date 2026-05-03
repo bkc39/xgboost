@@ -19,7 +19,7 @@
 
 ## Phase 3: Missing C API Coverage
 
-- [ ] Global config, build-info, and log callback APIs.
+- [x] Global config, build-info, and log callback APIs.
 - [ ] DMatrix constructors: file/URI, CSR, CSC, dense array interface, columnar array interface.
 - [ ] DMatrix metadata: string feature info, uint info, info interface, slicing, save-binary, quantile cuts.
 - [ ] Booster APIs: reset, slice, boosted rounds, number of features, custom objective training.

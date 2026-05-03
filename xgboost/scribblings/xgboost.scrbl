@@ -161,3 +161,25 @@ Loads a Booster from bytes produced by @racket[save-model-to-bytes].
 @defproc[(xgboost-version) string?]{
 Returns the linked XGBoost version string.
 }
+
+@defproc[(xgboost-build-info) string?]{
+Returns XGBoost build information as a JSON string.
+}
+
+@section{Process Configuration}
+
+@defproc[(xgboost-get-global-config) string?]{
+Returns XGBoost's process-global configuration as a JSON string.
+}
+
+@defproc[(xgboost-set-global-config! [config string?]) void?]{
+Sets XGBoost's process-global configuration from a JSON string.
+}
+
+@defproc[(xgboost-register-log-callback! [callback (-> string? any/c)])
+         void?]{
+Registers a process-global XGBoost log callback.
+
+The callback receives log messages as strings. Since the registration is
+process-global, callers should treat it as shared mutable process state.
+}

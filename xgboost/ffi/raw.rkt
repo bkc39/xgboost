@@ -10,6 +10,11 @@
          xgb-last-error/raw
          xgb-run-regression-demo/raw
          xgb-run-classification-demo/raw
+         _xgb-log-callback
+         xgb-build-info/raw
+         xgb-get-global-config/raw
+         xgb-set-global-config/raw
+         xgb-register-log-callback/raw
          _DMatrix
          _DMatrix/null
          DMatrix?
@@ -55,6 +60,33 @@
 (define-xgb xgb-run-classification-demo/raw
   (_fun (out : (_ptr o _double)) -> (rc : _int) -> (values rc out))
   #:c-id xgb_run_classification_demo)
+
+(define _xgb-log-callback
+  (_fun _string/utf-8 -> _void))
+
+(define-xgb xgb-build-info/raw
+  (_fun (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_build_info)
+
+(define-xgb xgb-get-global-config/raw
+  (_fun (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_get_global_config)
+
+(define-xgb xgb-set-global-config/raw
+  (_fun _string/utf-8 -> _int)
+  #:c-id xgb_set_global_config)
+
+(define-xgb xgb-register-log-callback/raw
+  (_fun _fpointer -> _int)
+  #:c-id xgb_register_log_callback)
 
 ;; ---------------------------------------------------------------------------
 ;; DMatrix: opaque handle to an XGBoost data matrix.

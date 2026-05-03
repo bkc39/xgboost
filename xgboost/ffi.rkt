@@ -9,6 +9,10 @@
 (provide
  (contract-out
   [xgboost-version (-> string?)]
+  [xgboost-build-info (-> string?)]
+  [xgboost-get-global-config (-> string?)]
+  [xgboost-set-global-config! (-> string? void?)]
+  [xgboost-register-log-callback! (-> (-> string? any/c) void?)]
   [run-regression-demo (-> rational?)]
   [run-classification-demo (-> (and/c rational? (>=/c 0) (<=/c 1)))]
   [dmatrix? (-> any/c boolean?)]
@@ -49,6 +53,38 @@
 
 (define (xgboost-version)
   (xgb-version/raw))
+
+(define (copy-string-result who raw)
+  (define-values (rc len)
+    (raw 0 (make-bytes 0)))
+  (cond
+    [(zero? rc) ""]
+    [(= rc 2)
+     (define buf (make-bytes len))
+     (define-values (rc2 len2) (raw len buf))
+     (check-ok rc2 who)
+     (unless (= len2 len)
+       (error who "expected ~a bytes, got ~a" len len2))
+     (bytes->string/utf-8 buf #f 0 len)]
+    [else (check-ok rc who)]))
+
+(define (xgboost-build-info)
+  (copy-string-result 'xgboost-build-info xgb-build-info/raw))
+
+(define (xgboost-get-global-config)
+  (copy-string-result 'xgboost-get-global-config xgb-get-global-config/raw))
+
+(define (xgboost-set-global-config! config)
+  (check-ok (xgb-set-global-config/raw config)
+            'xgboost-set-global-config!))
+
+(define current-log-callback #f)
+
+(define (xgboost-register-log-callback! proc)
+  (define callback-ptr (cast proc _xgb-log-callback _fpointer))
+  (check-ok (xgb-register-log-callback/raw callback-ptr)
+            'xgboost-register-log-callback!)
+  (set! current-log-callback (cons proc callback-ptr)))
 
 (define (check-ok rc who)
   (unless (zero? rc)
@@ -406,6 +442,28 @@
   (check-pred rational? (run-regression-demo))
   (let ([p (run-classification-demo)])
     (check-true (<= 0 p 1)))
+
+  (test-case "build info returns JSON"
+    (define info (xgboost-build-info))
+    (check-regexp-match #rx"^\\{" info))
+
+  (test-case "global config round-trips verbosity"
+    (define before (xgboost-get-global-config))
+    (dynamic-wind
+      void
+      (lambda ()
+        (xgboost-set-global-config! "{\"verbosity\":0}")
+        (check-regexp-match #rx"\"verbosity\":0"
+                            (xgboost-get-global-config)))
+      (lambda () (xgboost-set-global-config! before))))
+
+  (test-case "bad global config reports XGBoost error"
+    (check-exn exn:fail?
+               (lambda ()
+                 (xgboost-set-global-config! "{not-json"))))
+
+  (test-case "log callback registration accepts a Racket procedure"
+    (xgboost-register-log-callback! (lambda (msg) (void))))
 
   ;; --- DMatrix round-trip -------------------------------------------------
   (define (make-data) (f32vector 1.0 2.0 3.0 4.0 5.0 6.0))  ; 2 rows x 3 cols
