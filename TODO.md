@@ -14,7 +14,7 @@
 - [x] Accept row matrices, flat vectors, and `f32vector` feature data.
 - [x] Accept labels/weights as lists, vectors, or `f32vector`s.
 - [x] Coerce training parameter keys and values before calling the FFI layer.
-- [ ] Decide whether the high-level API should wrap native handles in Racket structs for lifetime tracking.
+- [x] Wrap high-level DMatrix and Booster values in Racket structs for lifetime tracking.
 - [ ] Add Scribble docs once the API shape settles.
 
 ## Phase 3: Missing C API Coverage
@@ -38,5 +38,6 @@
 
 - [ ] Add dedicated `exn:fail:xgboost` exception type.
 - [ ] Tighten DMatrix info-field and row-count validation in `xgboost/ffi`.
-- [ ] Track DMatrix lifetimes held by Booster caches.
+- [x] Track high-level DMatrix lifetimes held by high-level Booster caches.
+- [ ] Track DMatrix lifetimes held by low-level `xgboost/ffi` Booster caches.
 - [ ] Add ASan or Valgrind checks for the C++ shim.

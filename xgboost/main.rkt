@@ -7,6 +7,16 @@
          racket/string
          (prefix-in ffi: "ffi.rkt"))
 
+(struct dmatrix (handle rows cols)
+  #:property prop:custom-write
+  (lambda (dm port mode)
+    (fprintf port "#<dmatrix:~ax~a>" (dmatrix-rows dm) (dmatrix-cols dm))))
+
+(struct booster (handle cache)
+  #:property prop:custom-write
+  (lambda (_b port mode)
+    (fprintf port "#<booster>")))
+
 (provide
  (contract-out
   [xgboost-version (-> string?)]
@@ -17,40 +27,38 @@
          #:missing real?
          #:labels (or/c #f any/c)
          #:weights (or/c #f any/c))
-        ffi:dmatrix?)]
+        dmatrix?)]
   [train
-   (->* (ffi:dmatrix?)
+   (->* (dmatrix?)
         (#:params any/c
          #:rounds exact-nonnegative-integer?
-         #:evals (listof (cons/c string? ffi:dmatrix?))
+         #:evals (listof (cons/c string? dmatrix?))
          #:objective (or/c #f any/c)
          #:eta (or/c #f any/c)
          #:max-depth (or/c #f any/c)
          #:num-class (or/c #f any/c)
          #:eval-metric (or/c #f any/c)
          #:verbosity (or/c #f any/c))
-        ffi:booster?)]
+        booster?)]
   [predict
-   (->* (ffi:booster? ffi:dmatrix?)
+   (->* (booster? dmatrix?)
         (#:output (or/c 'value 'margin 'contribs 'approx-contribs
                         'interactions 'approx-interactions 'leaf)
          #:iteration-end exact-nonnegative-integer?
          #:as (or/c 'list 'f32vector))
         (or/c (listof real?) f32vector?))]
-  [save-model (-> ffi:booster? path-string? void?)]
-  [load-model (-> path-string? ffi:booster?)]
-  [save-model-to-bytes (->* (ffi:booster?) (#:format (or/c "json" "ubj")) bytes?)]
-  [load-model-from-bytes (-> bytes? ffi:booster?)]
-  [eval-one-iter (-> ffi:booster? exact-integer?
-                     (listof (cons/c string? ffi:dmatrix?))
+  [save-model (-> booster? path-string? void?)]
+  [load-model (-> path-string? booster?)]
+  [save-model-to-bytes (->* (booster?) (#:format (or/c "json" "ubj")) bytes?)]
+  [load-model-from-bytes (-> bytes? booster?)]
+  [eval-one-iter (-> booster? exact-integer?
+                     (listof (cons/c string? dmatrix?))
                      string?)]
   [parse-eval-line (-> string? (hash/c string? real?))])
  dmatrix?
  booster?)
 
 (define xgboost-version ffi:xgboost-version)
-(define dmatrix? ffi:dmatrix?)
-(define booster? ffi:booster?)
 (define parse-eval-line ffi:parse-eval-line)
 
 (define (sequence->f32vector who xs)
@@ -110,20 +118,20 @@
                       #:labels [labels #f]
                       #:weights [weights #f])
   (define-values (vec rows cols) (coerce-matrix data nrow ncol))
-  (define dm (ffi:dmatrix-create-from-mat vec rows cols missing))
+  (define h (ffi:dmatrix-create-from-mat vec rows cols missing))
   (when labels
     (define label-vec (sequence->f32vector 'make-dmatrix labels))
     (unless (= (f32vector-length label-vec) rows)
       (error 'make-dmatrix "label length ~a does not match row count ~a"
              (f32vector-length label-vec) rows))
-    (ffi:dmatrix-set-float-info! dm "label" label-vec))
+    (ffi:dmatrix-set-float-info! h "label" label-vec))
   (when weights
     (define weight-vec (sequence->f32vector 'make-dmatrix weights))
     (unless (= (f32vector-length weight-vec) rows)
       (error 'make-dmatrix "weight length ~a does not match row count ~a"
              (f32vector-length weight-vec) rows))
-    (ffi:dmatrix-set-float-info! dm "weight" weight-vec))
-  dm)
+    (ffi:dmatrix-set-float-info! h "weight" weight-vec))
+  (dmatrix h rows cols))
 
 (define (param-key->string k)
   (cond
@@ -166,7 +174,8 @@
                #:num-class [num-class #f]
                #:eval-metric [eval-metric #f]
                #:verbosity [verbosity #f])
-  (define b (ffi:booster-create (cons dtrain (map cdr evals))))
+  (define cache (cons dtrain (map cdr evals)))
+  (define h (ffi:booster-create (map dmatrix-handle cache)))
   (define all-params
     (append (params->pairs params)
             (maybe-param 'objective objective)
@@ -176,19 +185,19 @@
             (maybe-param 'eval_metric eval-metric)
             (maybe-param 'verbosity verbosity)))
   (for ([p (in-list all-params)])
-    (ffi:booster-set-param! b
+    (ffi:booster-set-param! h
                             (param-key->string (car p))
                             (param-value->string (cdr p))))
   (for ([iter (in-range rounds)])
-    (ffi:booster-update-one-iter! b iter dtrain))
-  b)
+    (ffi:booster-update-one-iter! h iter (dmatrix-handle dtrain)))
+  (booster h cache))
 
 (define (predict b dmat
                  #:output [output 'value]
                  #:iteration-end [iteration-end 0]
                  #:as [as 'list])
   (define preds
-    (ffi:booster-predict b dmat
+    (ffi:booster-predict (booster-handle b) (dmatrix-handle dmat)
                          #:output output
                          #:iteration-end iteration-end))
   (case as
@@ -196,22 +205,28 @@
     [(list) (f32vector->list preds)]
     [else (raise-argument-error 'predict "'list or 'f32vector" as)]))
 
-(define save-model ffi:booster-save-model!)
+(define (save-model b path)
+  (ffi:booster-save-model! (booster-handle b) path))
 
 (define (load-model path)
-  (define b (ffi:booster-create))
-  (ffi:booster-load-model! b path)
-  b)
+  (define h (ffi:booster-create))
+  (ffi:booster-load-model! h path)
+  (booster h '()))
 
 (define (save-model-to-bytes b #:format [fmt "ubj"])
-  (ffi:booster-save-model-to-bytes b #:format fmt))
+  (ffi:booster-save-model-to-bytes (booster-handle b) #:format fmt))
 
 (define (load-model-from-bytes bs)
-  (define b (ffi:booster-create))
-  (ffi:booster-load-model-from-bytes! b bs)
-  b)
+  (define h (ffi:booster-create))
+  (ffi:booster-load-model-from-bytes! h bs)
+  (booster h '()))
 
-(define eval-one-iter ffi:booster-eval-one-iter)
+(define (eval-one-iter b iter evals)
+  (ffi:booster-eval-one-iter
+   (booster-handle b)
+   iter
+   (for/list ([entry (in-list evals)])
+     (cons (car entry) (dmatrix-handle (cdr entry))))))
 
 (module+ main
   (printf "xgboost version: ~a\n" (xgboost-version))
@@ -233,7 +248,6 @@
 (module+ test
   (require rackunit
            racket/file
-           "ffi.rkt"
            "ffi/raw.rkt")
 
   (check-regexp-match #rx"^[0-9]+\\.[0-9]+\\.[0-9]+$" (xgboost-version))
@@ -243,26 +257,26 @@
   (test-case "make-dmatrix accepts list rows and labels"
     (define dm (make-dmatrix '((1 2) (3 4) (5 6)) #:labels '(1 2 3)))
     (check-pred dmatrix? dm)
-    (check-equal? (ffi:dmatrix-nrow dm) 3)
-    (check-equal? (ffi:dmatrix-ncol dm) 2)
-    (check-equal? (f32vector->list (ffi:dmatrix-get-float-info dm "label"))
+    (check-equal? (ffi:dmatrix-nrow (dmatrix-handle dm)) 3)
+    (check-equal? (ffi:dmatrix-ncol (dmatrix-handle dm)) 2)
+    (check-equal? (f32vector->list (ffi:dmatrix-get-float-info (dmatrix-handle dm) "label"))
                   '(1.0 2.0 3.0))
-    (ffi:dmatrix-free! dm))
+    (ffi:dmatrix-free! (dmatrix-handle dm)))
 
   (test-case "make-dmatrix accepts vector rows, flat vectors, and f32vectors"
     (define dm1 (make-dmatrix (vector (vector 1 2) (vector 3 4))
                               #:weights (vector 1.0 0.5)))
-    (check-equal? (ffi:dmatrix-nrow dm1) 2)
-    (check-equal? (ffi:dmatrix-ncol dm1) 2)
+    (check-equal? (ffi:dmatrix-nrow (dmatrix-handle dm1)) 2)
+    (check-equal? (ffi:dmatrix-ncol (dmatrix-handle dm1)) 2)
     (define dm2 (make-dmatrix (vector 1 2 3 4 5 6) #:nrow 2 #:ncol 3))
-    (check-equal? (ffi:dmatrix-nrow dm2) 2)
-    (check-equal? (ffi:dmatrix-ncol dm2) 3)
+    (check-equal? (ffi:dmatrix-nrow (dmatrix-handle dm2)) 2)
+    (check-equal? (ffi:dmatrix-ncol (dmatrix-handle dm2)) 3)
     (define dm3 (make-dmatrix (f32vector 1.0 2.0 3.0 4.0) #:nrow 4 #:ncol 1))
-    (check-equal? (ffi:dmatrix-nrow dm3) 4)
-    (check-equal? (ffi:dmatrix-ncol dm3) 1)
-    (ffi:dmatrix-free! dm1)
-    (ffi:dmatrix-free! dm2)
-    (ffi:dmatrix-free! dm3))
+    (check-equal? (ffi:dmatrix-nrow (dmatrix-handle dm3)) 4)
+    (check-equal? (ffi:dmatrix-ncol (dmatrix-handle dm3)) 1)
+    (ffi:dmatrix-free! (dmatrix-handle dm1))
+    (ffi:dmatrix-free! (dmatrix-handle dm2))
+    (ffi:dmatrix-free! (dmatrix-handle dm3)))
 
   (test-case "train and predict regression"
     (define dm
@@ -286,8 +300,9 @@
     (check-true (andmap real? preds))
     (define line (eval-one-iter b 19 (list (cons "train" dm))))
     (check-true (hash-has-key? (parse-eval-line line) "train-rmse"))
-    (ffi:booster-free! b)
-    (ffi:dmatrix-free! dm))
+    (check-equal? (booster-cache b) (list dm))
+    (ffi:booster-free! (booster-handle b))
+    (ffi:dmatrix-free! (dmatrix-handle dm)))
 
   (test-case "binary classification probabilities"
     (define dm
@@ -302,8 +317,8 @@
                      #:rounds 10))
     (for ([p (in-list (predict b dm))])
       (check-true (<= 0.0 p 1.0)))
-    (ffi:booster-free! b)
-    (ffi:dmatrix-free! dm))
+    (ffi:booster-free! (booster-handle b))
+    (ffi:dmatrix-free! (dmatrix-handle dm)))
 
   (test-case "multiclass softprob returns rows * classes predictions"
     (define dm
@@ -317,8 +332,8 @@
                      #:verbosity 0
                      #:rounds 5))
     (check-equal? (length (predict b dm)) 12)
-    (ffi:booster-free! b)
-    (ffi:dmatrix-free! dm))
+    (ffi:booster-free! (booster-handle b))
+    (ffi:dmatrix-free! (dmatrix-handle dm)))
 
   (test-case "save and load model"
     (define dm (make-dmatrix '((1) (2) (3) (4)) #:labels '(1 2 3 4)))
@@ -334,10 +349,10 @@
         (save-model b tmp)
         (define b2 (load-model tmp))
         (check-equal? (predict b2 dm) base)
-        (ffi:booster-free! b2))
+        (ffi:booster-free! (booster-handle b2)))
       (lambda () (when (file-exists? tmp) (delete-file tmp))))
     (define b3 (load-model-from-bytes (save-model-to-bytes b)))
     (check-equal? (predict b3 dm) base)
-    (ffi:booster-free! b3)
-    (ffi:booster-free! b)
-    (ffi:dmatrix-free! dm)))
+    (ffi:booster-free! (booster-handle b3))
+    (ffi:booster-free! (booster-handle b))
+    (ffi:dmatrix-free! (dmatrix-handle dm))))
