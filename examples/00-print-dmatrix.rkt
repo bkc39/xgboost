@@ -8,7 +8,7 @@
 
 (require ffi/vector
          racket/pretty
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 (define features
   (f32vector 1.0 2.0 0.5

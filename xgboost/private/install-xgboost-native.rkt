@@ -21,7 +21,7 @@
 
 (define (pre-installer collections-top-path this-collection-path user-specific?)
   (define native-libs-dir (build-path this-collection-path "native-libs"))
-  (define cpp-lib-path (getenv "XGBOOST_RKT_NATIVE_LIB_PATH"))
+  (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
   (cond
     [cpp-lib-path
      (copy-native-libs! native-libs-dir (build-path cpp-lib-path "lib")

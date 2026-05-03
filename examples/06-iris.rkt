@@ -21,7 +21,7 @@
 (require ffi/vector
          racket/format
          racket/string
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 (define iris-csv #<<IRIS-CSV
 5.1,3.5,1.4,0.2,Iris-setosa

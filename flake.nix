@@ -1,5 +1,5 @@
 {
-  description = "xgboost-rkt - Racket XGBoost bindings (scaffolding)";
+  description = "xgboost - Racket XGBoost bindings (scaffolding)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -16,7 +16,7 @@
         let
           pkgs = import nixpkgs { inherit system; };
           cpp = pkgs.stdenv.mkDerivation {
-            pname = "xgboost-rkt-cpp";
+            pname = "xgboost-cpp";
             inherit version;
             src = ./cpp;
 
@@ -44,7 +44,7 @@
           };
 
           racket = pkgs.stdenv.mkDerivation {
-            pname = "xgboost-rkt";
+            pname = "xgboost";
             inherit version;
             src = ./.;
 
@@ -55,17 +55,17 @@
               runHook preBuild
 
               export PLTUSERHOME=$TMPDIR/racket-home
-              export XGBOOST_RKT_NATIVE_LIB_PATH=${cpp}
+              export XGBOOST_NATIVE_LIB_PATH=${cpp}
               mkdir -p $PLTUSERHOME
 
               # Pre-populate native-libs/ so define-runtime-path works during testing
-              mkdir -p ./xgboost-rkt/native-libs
-              cp ${cpp}/lib/libxgbcompat.* ./xgboost-rkt/native-libs/
+              mkdir -p ./xgboost/native-libs
+              cp ${cpp}/lib/libxgbcompat.* ./xgboost/native-libs/
 
               raco pkg install --batch --deps fail --no-setup --copy --scope user \
-                --name xgboost-rkt ./xgboost-rkt
+                --name xgboost ./xgboost
 
-              raco setup --no-docs --pkgs xgboost-rkt
+              raco setup --no-docs --pkgs xgboost
 
               runHook postBuild
             '';
@@ -73,7 +73,7 @@
             doCheck = true;
             checkPhase = ''
               runHook preCheck
-              raco test ./xgboost-rkt/
+              raco test ./xgboost/
               runHook postCheck
             '';
 
@@ -83,9 +83,9 @@
               mkdir -p $out/share $out/bin
               cp -r $PLTUSERHOME $out/share/racket-home
 
-              makeWrapper ${pkgs.racket}/bin/racket $out/bin/xgboost-rkt \
+              makeWrapper ${pkgs.racket}/bin/racket $out/bin/xgboost \
                 --set PLTUSERHOME $out/share/racket-home \
-                --add-flags "-l xgboost-rkt"
+                --add-flags "-l xgboost"
 
               runHook postInstall
             '';
@@ -94,7 +94,7 @@
           copy-native-libs = pkgs.writeShellApplication {
             name = "copy-native-libs";
             text = ''
-              DEST="$(pwd)/xgboost-rkt/native-libs"
+              DEST="$(pwd)/xgboost/native-libs"
               mkdir -p "$DEST"
               cp -v ${cpp}/lib/libxgbcompat.* "$DEST/"
               echo "Native libraries copied to $DEST"
@@ -135,19 +135,19 @@
             ];
 
             shellHook = ''
-              export XGBOOST_RKT_NATIVE_LIB_PATH="${cpp}"
+              export XGBOOST_NATIVE_LIB_PATH="${cpp}"
               export PLTUSERHOME="$PWD/.racket-user"
               deps_stamp="$PLTUSERHOME/.deps-installed-v1"
               if [ ! -f "$deps_stamp" ]; then
                 echo "Installing Racket package (link mode)..."
                 mkdir -p "$PLTUSERHOME"
-                mkdir -p ./xgboost-rkt/native-libs
-                cp ${cpp}/lib/libxgbcompat.* ./xgboost-rkt/native-libs/ 2>/dev/null || true
+                mkdir -p ./xgboost/native-libs
+                cp ${cpp}/lib/libxgbcompat.* ./xgboost/native-libs/ 2>/dev/null || true
                 raco pkg install --batch --auto --no-setup --link --scope user --skip-installed \
-                  --name xgboost-rkt "$PWD/xgboost-rkt"
-                raco setup --no-docs --pkgs xgboost-rkt
+                  --name xgboost "$PWD/xgboost"
+                raco setup --no-docs --pkgs xgboost
                 touch "$deps_stamp"
-                echo "Done. Run: raco test xgboost-rkt/"
+                echo "Done. Run: raco test xgboost/"
               fi
             '';
           };

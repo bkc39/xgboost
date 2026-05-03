@@ -10,7 +10,7 @@
 
 (require ffi/vector
          racket/format
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 ;; 8 rows x 3 features.  Labels were chosen to be roughly
 ;; `2*x0 + x1 - x2` plus a touch of noise — a tree booster fits this easily.

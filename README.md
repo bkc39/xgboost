@@ -1,22 +1,39 @@
-# xgboost-rkt
+# xgboost
 
 Racket bindings for [XGBoost](https://xgboost.readthedocs.io/), built with Nix.
 
-Scaffolding only: the current FFI exposes the XGBoost version string and two hardcoded-data demos (regression + binary classification). It proves that libxgboost links, loads, trains, and predicts correctly from Racket.
+The default API is high level:
 
-## Quick start
+```racket
+#lang racket
+
+(require xgboost)
+
+(define dtrain
+  (make-dmatrix '((1.0 2.0 0.5)
+                  (2.0 1.0 1.5)
+                  (3.0 0.5 0.0)
+                  (0.5 3.0 2.0))
+                #:labels '(3.5 3.5 6.5 2.0)))
+
+(define booster
+  (train dtrain
+         #:objective "reg:squarederror"
+         #:max-depth 2
+         #:eta 0.2
+         #:verbosity 0
+         #:rounds 10))
+
+(predict booster dtrain)
+```
+
+Use `(require xgboost/ffi)` for the contracted low-level DMatrix/Booster wrappers, and `(require xgboost/ffi/raw)` for direct C FFI bindings.
+
+## Quick Start
 
 ```bash
 nix build
-./result/bin/xgboost-rkt
-```
-
-Expected output:
-
-```
-xgboost version: 3.0.5
-regression first prediction: <some float>
-classification first prediction: <some float in [0,1]>
+./result/bin/xgboost
 ```
 
 ## Development
@@ -30,13 +47,16 @@ cmake --build cpp/build
 ctest --test-dir cpp/build --output-on-failure
 
 # run the Racket tests
-raco test xgboost-rkt/
+raco test xgboost/
 ```
 
 ## Layout
 
-- `cpp/` — C++ wrapper library (`libxgbcompat`) built with CMake, links against `pkgs.xgboost`.
-- `xgboost-rkt/` — Racket package (collection: `xgboost-rkt`), loads `libxgbcompat` via FFI.
-- `flake.nix` — `cpp` and `racket` derivations.
+- `cpp/` - C++ wrapper library (`libxgbcompat`) built with CMake, links against `pkgs.xgboost`.
+- `xgboost/main.rkt` - high-level root API for `(require xgboost)`.
+- `xgboost/ffi.rkt` - contracted low-level Racket wrappers.
+- `xgboost/ffi/raw.rkt` - direct C FFI bindings.
+- `xgboost/private/` - native library installer implementation.
+- `flake.nix` - `cpp` and `racket` derivations.
 
-See `CLAUDE.md` for architecture details.
+See `AGENTS.md` for architecture notes and the current roadmap.

@@ -10,7 +10,7 @@
 
 (require ffi/vector
          racket/format
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 ;; Two non-overlapping splits of an y ≈ 2*x0 + x1 - x2 dataset.
 

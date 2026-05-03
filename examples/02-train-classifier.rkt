@@ -11,7 +11,7 @@
 
 (require ffi/vector
          racket/format
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 ;; 10 rows x 4 features, alternating class 0 / class 1.
 (define features

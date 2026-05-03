@@ -30,7 +30,7 @@
          racket/format
          racket/list
          racket/string
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 (define bike-csv #<<BIKES
 season,yr,mnth,holiday,weekday,workingday,weathersit,temp,atemp,hum,windspeed,cnt

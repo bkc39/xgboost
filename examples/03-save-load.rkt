@@ -10,7 +10,7 @@
 (require ffi/vector
          racket/file
          racket/format
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 (define features
   (f32vector 1.0 2.0 0.5

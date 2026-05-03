@@ -24,7 +24,7 @@
          racket/format
          racket/list
          racket/string
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 (define diabetes-tsv #<<DIABETES
 AGE	SEX	BMI	BP	S1	S2	S3	S4	S5	S6	Y

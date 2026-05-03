@@ -4,7 +4,7 @@
          ffi/vector
          racket/contract
          racket/string
-         "ffi-raw.rkt")
+         "ffi/raw.rkt")
 
 (provide
  (contract-out
@@ -30,7 +30,12 @@
   [booster-set-param! (-> booster? string? string? void?)]
   [booster-update-one-iter! (-> booster? exact-integer? dmatrix? void?)]
   [booster-predict
-   (->* (booster? dmatrix?) (#:config string?) f32vector?)]
+   (->* (booster? dmatrix?)
+        (#:output (or/c 'value 'margin 'contribs 'approx-contribs
+                        'interactions 'approx-interactions 'leaf)
+         #:iteration-end exact-nonnegative-integer?
+         #:config (or/c #f string?))
+        f32vector?)]
   [booster-save-model! (-> booster? path-string? void?)]
   [booster-load-model! (-> booster? path-string? void?)]
   [booster-save-model-to-bytes
@@ -227,11 +232,31 @@
 
 (define (booster? v) (Booster? v))
 
-(define booster-default-predict-config
-  (string-append
-   "{\"type\":0,\"training\":false,"
-   "\"iteration_begin\":0,\"iteration_end\":0,"
-   "\"strict_shape\":false}"))
+;; XGBoost's predict-type integers, per the C API doc:
+;;   0 value (default), 1 margin, 2 SHAP contribution,
+;;   3 approximate SHAP, 4 SHAP interaction,
+;;   5 approximate SHAP interaction, 6 leaf indices
+(define output-symbol->type
+  '((value               . 0)
+    (margin              . 1)
+    (contribs            . 2)
+    (approx-contribs     . 3)
+    (interactions        . 4)
+    (approx-interactions . 5)
+    (leaf                . 6)))
+
+(define (build-predict-config #:output [output 'value]
+                              #:iteration-end [iter-end 0])
+  ;; iteration_end=0 means "use all trees" in XGBoost.  Higher values predict
+  ;; using only the first N rounds — useful for plotting prediction
+  ;; trajectories or for early-stop verification.
+  (define type
+    (cdr (assq output output-symbol->type)))
+  (format
+   "{\"type\":~a,\"training\":false,\"iteration_begin\":0,\"iteration_end\":~a,\"strict_shape\":false}"
+   type iter-end))
+
+(define booster-default-predict-config (build-predict-config))
 
 (define (booster-create [cache '()])
   (define h (xgb-booster-create/raw cache))
@@ -253,15 +278,32 @@
             'booster-update-one-iter!))
 
 ;; Predict against `dmat`, returning a fresh f32vector sized to whatever
-;; XGBoost emitted.  Uses an opportunistic two-step retry: size for the
-;; common reg/binary case (`nrow` predictions), and if XGBoost wants more
-;; (e.g. multi-class), resize and call again.  The booster-owned buffer is
-;; copied on the C side, so it never escapes.
+;; XGBoost emitted.
+;;
+;; #:output selects the prediction type — 'value (default) is the usual
+;; per-row response; 'margin is the raw score before the link function;
+;; 'contribs / 'interactions emit per-feature SHAP values
+;; (shape grows to nrow*(ncol+1) / nrow*(ncol+1)^2); 'leaf emits the
+;; leaf index each row landed in for every tree (shape nrow*ntree).
+;;
+;; #:iteration-end limits prediction to the first N rounds (0 = all).
+;;
+;; The rc=2 resize-and-retry path absorbs all of these shape changes
+;; transparently.  The booster-owned buffer is copied on the C side
+;; before any return.
+;;
+;; #:config takes a fully-formed JSON predict-config string and supersedes
+;; both keyword args; pass it when you need to set fields we don't surface
+;; (e.g. iteration_begin, strict_shape).
 (define (booster-predict h dmat
-                         #:config [config booster-default-predict-config])
+                         #:output [output 'value]
+                         #:iteration-end [iter-end 0]
+                         #:config [config #f])
+  (define cfg
+    (or config (build-predict-config #:output output #:iteration-end iter-end)))
   (define guess (max 1 (dmatrix-nrow dmat)))
   (define buf (make-f32vector guess))
-  (define-values (rc len) (xgb-booster-predict/raw h dmat config guess buf))
+  (define-values (rc len) (xgb-booster-predict/raw h dmat cfg guess buf))
   (cond
     [(zero? rc)
      ;; The full prediction fit in `buf`, but `len` may be smaller than
@@ -276,7 +318,7 @@
     [(= rc 2)
      ;; Buffer too small; resize and retry.  `len` holds the required size.
      (define buf2 (make-f32vector len))
-     (define-values (rc2 len2) (xgb-booster-predict/raw h dmat config len buf2))
+     (define-values (rc2 len2) (xgb-booster-predict/raw h dmat cfg len buf2))
      (check-ok rc2 'booster-predict)
      (unless (= len2 len)
        (error 'booster-predict
@@ -700,5 +742,64 @@
     (check-true (> (string-length line) 512))
     (define metrics (parse-eval-line line))
     (check-equal? (hash-count metrics) 32)
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  ;; --- Predict-mode keywords --------------------------------------------
+
+  (test-case "booster-predict #:output 'margin returns nrow values"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 5))
+    (define values   (booster-predict b dtrain))
+    (define margins  (booster-predict b dtrain #:output 'margin))
+    (check-equal? (f32vector-length margins) (f32vector-length values))
+    ;; reg:squarederror has identity link, so margin == value for this objective.
+    (for ([i (in-range (f32vector-length values))])
+      (check-= (f32vector-ref margins i) (f32vector-ref values i) 1e-5))
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "booster-predict #:output 'leaf returns nrow * ntree indices"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 7))
+    (define n (dmatrix-nrow dtrain))
+    (define leaves (booster-predict b dtrain #:output 'leaf))
+    ;; Output shape is nrow * ntree (here ntree == rounds == 7).
+    (check-equal? (f32vector-length leaves) (* n 7))
+    ;; Leaf indices are nonneg integers stored as floats.
+    (for ([i (in-range (f32vector-length leaves))])
+      (define v (f32vector-ref leaves i))
+      (check-true (>= v 0))
+      (check-equal? v (round v)))
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "booster-predict #:output 'contribs returns nrow * (ncol+1) SHAP"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 5))
+    (define n (dmatrix-nrow dtrain))
+    (define ncol (dmatrix-ncol dtrain))
+    (define shap (booster-predict b dtrain #:output 'contribs))
+    (check-equal? (f32vector-length shap) (* n (+ ncol 1)))
+    ;; SHAP additivity: sum across contribution columns ≈ raw margin.
+    (define margins (booster-predict b dtrain #:output 'margin))
+    (for ([i (in-range n)])
+      (define row-sum
+        (for/sum ([c (in-range (+ ncol 1))])
+          (f32vector-ref shap (+ (* i (+ ncol 1)) c))))
+      (check-= row-sum (f32vector-ref margins i) 1e-3))
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "booster-predict #:iteration-end limits trees used"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 20))
+    (define p1     (booster-predict b dtrain #:iteration-end 1))
+    (define p20    (booster-predict b dtrain #:iteration-end 20))
+    (define p-all  (booster-predict b dtrain))
+    ;; iteration_end=20 == use all trees == default (0 means "all").
+    (for ([i (in-range (f32vector-length p20))])
+      (check-= (f32vector-ref p20 i) (f32vector-ref p-all i) 1e-6))
+    ;; First-tree-only predictions must differ from the full ensemble.
+    (define same?
+      (for/and ([i (in-range (f32vector-length p1))])
+        (= (f32vector-ref p1 i) (f32vector-ref p-all i))))
+    (check-false same? "iteration-end=1 should differ from full ensemble")
     (booster-free! b)
     (dmatrix-free! dtrain)))

@@ -30,7 +30,7 @@
          racket/format
          racket/list
          racket/string
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 (define veteran-csv #<<VETERAN
 rownames,trt,celltype,time,status,karno,diagtime,age,prior

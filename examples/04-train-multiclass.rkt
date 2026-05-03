@@ -14,7 +14,7 @@
 
 (require ffi/vector
          racket/format
-         "../xgboost-rkt/main.rkt")
+         xgboost/ffi)
 
 ;; Feature layout: 18 rows x 2 cols, 6 rows per class.  Centers are
 ;; (0,0), (6,0), (3,6); each cluster is a tight square around its center.

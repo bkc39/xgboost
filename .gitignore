@@ -2,6 +2,6 @@ result
 result-*
 .racket-user/
 cpp/build/
-xgboost-rkt/native-libs/*
-!xgboost-rkt/native-libs/.gitkeep
+xgboost/native-libs/*
+!xgboost/native-libs/.gitkeep
 **/compiled/
