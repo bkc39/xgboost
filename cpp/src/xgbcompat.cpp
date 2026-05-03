@@ -7,11 +7,32 @@
 #include <cstring>
 #include <exception>
 #include <string>
+#include <vector>
 
 namespace xgbcompat {
 namespace {
 
 thread_local std::string g_version_cache;
+
+uint64_t nul_separated_size(const char** values, uint64_t count) {
+  uint64_t need = 0;
+  for (uint64_t i = 0; i < count; ++i) {
+    need += static_cast<uint64_t>(std::strlen(values[i])) + 1;
+  }
+  return need;
+}
+
+void copy_nul_separated(const char** values,
+                        uint64_t count,
+                        char* out_buffer) {
+  char* cursor = out_buffer;
+  for (uint64_t i = 0; i < count; ++i) {
+    const size_t len_i = std::strlen(values[i]);
+    std::copy(values[i], values[i] + len_i, cursor);
+    cursor += len_i;
+    *cursor++ = '\0';
+  }
+}
 
 }  // namespace
 }  // namespace xgbcompat
@@ -478,23 +499,14 @@ int xgb_dmatrix_get_str_feature_info(xgb_dmatrix_t handle,
                                    &n,
                                    &values),
         "XGDMatrixGetStrFeatureInfo");
-    uint64_t need = 0;
-    for (bst_ulong i = 0; i < n; ++i) {
-      need += static_cast<uint64_t>(std::strlen(values[i])) + 1;
-    }
+    const uint64_t need = xgbcompat::nul_separated_size(values, n);
     *out_len = need;
     *out_count = static_cast<uint64_t>(n);
     if (buffer_capacity < need) {
       return 2;
     }
     if (need > 0 && out_buffer) {
-      char* cursor = out_buffer;
-      for (bst_ulong i = 0; i < n; ++i) {
-        const size_t len_i = std::strlen(values[i]);
-        std::copy(values[i], values[i] + len_i, cursor);
-        cursor += len_i;
-        *cursor++ = '\0';
-      }
+      xgbcompat::copy_nul_separated(values, n, out_buffer);
     }
     return 0;
   } catch (const std::exception&) {
@@ -763,6 +775,92 @@ void xgb_booster_free(xgb_booster_t handle) {
   }
 }
 
+int xgb_booster_reset(xgb_booster_t handle) {
+  if (!handle) {
+    xgbcompat::g_last_error = "xgb_booster_reset: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(XGBoosterReset(static_cast<BoosterHandle>(handle)),
+                     "XGBoosterReset");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error = "xgb_booster_reset: unknown exception";
+    return 1;
+  }
+}
+
+xgb_booster_t xgb_booster_slice(xgb_booster_t handle,
+                                int begin_layer,
+                                int end_layer,
+                                int step) {
+  if (!handle) {
+    xgbcompat::g_last_error = "xgb_booster_slice: invalid argument";
+    return nullptr;
+  }
+  BoosterHandle out = nullptr;
+  try {
+    xgbcompat::check(
+        XGBoosterSlice(static_cast<BoosterHandle>(handle),
+                       begin_layer, end_layer, step, &out),
+        "XGBoosterSlice");
+    return static_cast<xgb_booster_t>(out);
+  } catch (const std::exception&) {
+    if (out) XGBoosterFree(out);
+    return nullptr;
+  } catch (...) {
+    if (out) XGBoosterFree(out);
+    xgbcompat::g_last_error = "xgb_booster_slice: unknown exception";
+    return nullptr;
+  }
+}
+
+int xgb_booster_boosted_rounds(xgb_booster_t handle, int* out_rounds) {
+  if (!handle || !out_rounds) {
+    xgbcompat::g_last_error =
+        "xgb_booster_boosted_rounds: invalid argument";
+    return 1;
+  }
+  try {
+    int rounds = 0;
+    xgbcompat::check(
+        XGBoosterBoostedRounds(static_cast<BoosterHandle>(handle), &rounds),
+        "XGBoosterBoostedRounds");
+    *out_rounds = rounds;
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_boosted_rounds: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_num_feature(xgb_booster_t handle, uint64_t* out_features) {
+  if (!handle || !out_features) {
+    xgbcompat::g_last_error =
+        "xgb_booster_num_feature: invalid argument";
+    return 1;
+  }
+  try {
+    bst_ulong n = 0;
+    xgbcompat::check(
+        XGBoosterGetNumFeature(static_cast<BoosterHandle>(handle), &n),
+        "XGBoosterGetNumFeature");
+    *out_features = static_cast<uint64_t>(n);
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_num_feature: unknown exception";
+    return 1;
+  }
+}
+
 int xgb_booster_set_param(xgb_booster_t handle,
                           const char* key,
                           const char* value) {
@@ -949,6 +1047,414 @@ int xgb_booster_load_model_from_buffer(xgb_booster_t handle,
   } catch (...) {
     xgbcompat::g_last_error =
         "xgb_booster_load_model_from_buffer: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_save_json_config(xgb_booster_t handle,
+                                 uint64_t buffer_capacity,
+                                 char* out_buffer,
+                                 uint64_t* out_len) {
+  if (!handle || !out_len || (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_save_json_config: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  try {
+    bst_ulong n = 0;
+    const char* config = nullptr;
+    xgbcompat::check(
+        XGBoosterSaveJsonConfig(static_cast<BoosterHandle>(handle),
+                                &n, &config),
+        "XGBoosterSaveJsonConfig");
+    *out_len = static_cast<uint64_t>(n);
+    if (buffer_capacity < *out_len) {
+      return 2;
+    }
+    if (*out_len > 0 && config && out_buffer) {
+      std::copy(config, config + *out_len, out_buffer);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_save_json_config: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_load_json_config(xgb_booster_t handle, const char* config) {
+  if (!handle || !config) {
+    xgbcompat::g_last_error =
+        "xgb_booster_load_json_config: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGBoosterLoadJsonConfig(static_cast<BoosterHandle>(handle), config),
+        "XGBoosterLoadJsonConfig");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_load_json_config: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_set_attr(xgb_booster_t handle,
+                         const char* key,
+                         const char* value) {
+  if (!handle || !key || !value) {
+    xgbcompat::g_last_error = "xgb_booster_set_attr: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGBoosterSetAttr(static_cast<BoosterHandle>(handle), key, value),
+        "XGBoosterSetAttr");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error = "xgb_booster_set_attr: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_delete_attr(xgb_booster_t handle, const char* key) {
+  if (!handle || !key) {
+    xgbcompat::g_last_error = "xgb_booster_delete_attr: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGBoosterSetAttr(static_cast<BoosterHandle>(handle), key, nullptr),
+        "XGBoosterSetAttr(delete)");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_delete_attr: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_get_attr(xgb_booster_t handle,
+                         const char* key,
+                         uint64_t buffer_capacity,
+                         char* out_buffer,
+                         uint64_t* out_len,
+                         int* found) {
+  if (!handle || !key || !out_len || !found ||
+      (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error = "xgb_booster_get_attr: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  *found = 0;
+  try {
+    const char* value = nullptr;
+    int success = 0;
+    xgbcompat::check(
+        XGBoosterGetAttr(static_cast<BoosterHandle>(handle),
+                         key, &value, &success),
+        "XGBoosterGetAttr");
+    *found = success;
+    if (!success || !value) {
+      return 0;
+    }
+    const uint64_t len = static_cast<uint64_t>(std::strlen(value));
+    *out_len = len;
+    if (buffer_capacity < len) {
+      return 2;
+    }
+    if (len > 0 && out_buffer) {
+      std::copy(value, value + len, out_buffer);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error = "xgb_booster_get_attr: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_get_attr_names(xgb_booster_t handle,
+                               uint64_t buffer_capacity,
+                               char* out_buffer,
+                               uint64_t* out_len,
+                               uint64_t* out_count) {
+  if (!handle || !out_len || !out_count ||
+      (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_get_attr_names: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  *out_count = 0;
+  try {
+    bst_ulong n = 0;
+    const char** names = nullptr;
+    xgbcompat::check(
+        XGBoosterGetAttrNames(static_cast<BoosterHandle>(handle),
+                              &n, &names),
+        "XGBoosterGetAttrNames");
+    const uint64_t need = xgbcompat::nul_separated_size(names, n);
+    *out_len = need;
+    *out_count = static_cast<uint64_t>(n);
+    if (buffer_capacity < need) {
+      return 2;
+    }
+    if (need > 0 && out_buffer) {
+      xgbcompat::copy_nul_separated(names, n, out_buffer);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_get_attr_names: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_set_str_feature_info(xgb_booster_t handle,
+                                     const char* field,
+                                     const char** values,
+                                     size_t len) {
+  if (!handle || !field || (!values && len > 0)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_set_str_feature_info: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGBoosterSetStrFeatureInfo(static_cast<BoosterHandle>(handle),
+                                   field, values,
+                                   static_cast<bst_ulong>(len)),
+        "XGBoosterSetStrFeatureInfo");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_set_str_feature_info: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_get_str_feature_info(xgb_booster_t handle,
+                                     const char* field,
+                                     uint64_t buffer_capacity,
+                                     char* out_buffer,
+                                     uint64_t* out_len,
+                                     uint64_t* out_count) {
+  if (!handle || !field || !out_len || !out_count ||
+      (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_get_str_feature_info: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  *out_count = 0;
+  try {
+    bst_ulong n = 0;
+    const char** values = nullptr;
+    xgbcompat::check(
+        XGBoosterGetStrFeatureInfo(static_cast<BoosterHandle>(handle),
+                                   field, &n, &values),
+        "XGBoosterGetStrFeatureInfo");
+    const uint64_t need = xgbcompat::nul_separated_size(values, n);
+    *out_len = need;
+    *out_count = static_cast<uint64_t>(n);
+    if (buffer_capacity < need) {
+      return 2;
+    }
+    if (need > 0 && out_buffer) {
+      xgbcompat::copy_nul_separated(values, n, out_buffer);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_get_str_feature_info: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_dump_model(xgb_booster_t handle,
+                           const char* format,
+                           int with_stats,
+                           uint64_t buffer_capacity,
+                           char* out_buffer,
+                           uint64_t* out_len,
+                           uint64_t* out_count) {
+  if (!handle || !format || !out_len || !out_count ||
+      (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error = "xgb_booster_dump_model: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  *out_count = 0;
+  try {
+    bst_ulong n = 0;
+    const char** dumps = nullptr;
+    xgbcompat::check(
+        XGBoosterDumpModelEx(static_cast<BoosterHandle>(handle),
+                             "", with_stats, format, &n, &dumps),
+        "XGBoosterDumpModelEx");
+    const uint64_t need = xgbcompat::nul_separated_size(dumps, n);
+    *out_len = need;
+    *out_count = static_cast<uint64_t>(n);
+    if (buffer_capacity < need) {
+      return 2;
+    }
+    if (need > 0 && out_buffer) {
+      xgbcompat::copy_nul_separated(dumps, n, out_buffer);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_dump_model: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_dump_model_with_features(xgb_booster_t handle,
+                                         const char** feature_names,
+                                         const char** feature_types,
+                                         size_t n_features,
+                                         const char* format,
+                                         int with_stats,
+                                         uint64_t buffer_capacity,
+                                         char* out_buffer,
+                                         uint64_t* out_len,
+                                         uint64_t* out_count) {
+  if (!handle || !format || !out_len || !out_count ||
+      (!feature_names && n_features > 0) ||
+      (!feature_types && n_features > 0) ||
+      (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_dump_model_with_features: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  *out_count = 0;
+  try {
+    bst_ulong n = 0;
+    const char** dumps = nullptr;
+    xgbcompat::check(
+        XGBoosterDumpModelExWithFeatures(
+            static_cast<BoosterHandle>(handle),
+            static_cast<int>(n_features),
+            feature_names,
+            feature_types,
+            with_stats,
+            format,
+            &n,
+            &dumps),
+        "XGBoosterDumpModelExWithFeatures");
+    const uint64_t need = xgbcompat::nul_separated_size(dumps, n);
+    *out_len = need;
+    *out_count = static_cast<uint64_t>(n);
+    if (buffer_capacity < need) {
+      return 2;
+    }
+    if (need > 0 && out_buffer) {
+      xgbcompat::copy_nul_separated(dumps, n, out_buffer);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_dump_model_with_features: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_feature_score(xgb_booster_t handle,
+                              const char* config,
+                              uint64_t feature_capacity,
+                              char* out_features,
+                              uint64_t* out_feature_len,
+                              uint64_t* out_n_features,
+                              uint64_t shape_capacity,
+                              uint64_t* out_shape,
+                              uint64_t* out_dim,
+                              uint64_t score_capacity,
+                              float* out_scores,
+                              uint64_t* out_n_scores) {
+  if (!handle || !config || !out_feature_len || !out_n_features ||
+      !out_dim || !out_n_scores ||
+      (feature_capacity > 0 && !out_features) ||
+      (shape_capacity > 0 && !out_shape) ||
+      (score_capacity > 0 && !out_scores)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_feature_score: invalid argument";
+    return 1;
+  }
+  *out_feature_len = 0;
+  *out_n_features = 0;
+  *out_dim = 0;
+  *out_n_scores = 0;
+  try {
+    bst_ulong n_features = 0;
+    const char** features = nullptr;
+    bst_ulong dim = 0;
+    const bst_ulong* shape = nullptr;
+    const float* scores = nullptr;
+    xgbcompat::check(
+        XGBoosterFeatureScore(static_cast<BoosterHandle>(handle), config,
+                              &n_features, &features, &dim, &shape, &scores),
+        "XGBoosterFeatureScore");
+
+    const uint64_t feature_bytes =
+        xgbcompat::nul_separated_size(features, n_features);
+    uint64_t n_scores = 1;
+    for (bst_ulong i = 0; i < dim; ++i) {
+      n_scores *= static_cast<uint64_t>(shape[i]);
+    }
+    if (dim == 0) {
+      n_scores = 0;
+    }
+
+    *out_feature_len = feature_bytes;
+    *out_n_features = static_cast<uint64_t>(n_features);
+    *out_dim = static_cast<uint64_t>(dim);
+    *out_n_scores = n_scores;
+
+    if (feature_capacity < feature_bytes ||
+        shape_capacity < static_cast<uint64_t>(dim) ||
+        score_capacity < n_scores) {
+      return 2;
+    }
+    if (feature_bytes > 0 && out_features) {
+      xgbcompat::copy_nul_separated(features, n_features, out_features);
+    }
+    if (dim > 0 && out_shape) {
+      for (bst_ulong i = 0; i < dim; ++i) {
+        out_shape[i] = static_cast<uint64_t>(shape[i]);
+      }
+    }
+    if (n_scores > 0 && scores && out_scores) {
+      std::copy(scores, scores + n_scores, out_scores);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_feature_score: unknown exception";
     return 1;
   }
 }

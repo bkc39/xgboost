@@ -222,6 +222,19 @@ xgb_booster_t xgb_booster_create(const xgb_dmatrix_t* cache, size_t cache_len);
 /* Release a booster.  Safe to call on NULL. */
 void xgb_booster_free(xgb_booster_t handle);
 
+/* Release training caches held by a booster. */
+int xgb_booster_reset(xgb_booster_t handle);
+
+/* Slice boosted rounds from a booster into a new booster. */
+xgb_booster_t xgb_booster_slice(xgb_booster_t handle,
+                                int begin_layer,
+                                int end_layer,
+                                int step);
+
+/* Query booster structure. */
+int xgb_booster_boosted_rounds(xgb_booster_t handle, int* out_rounds);
+int xgb_booster_num_feature(xgb_booster_t handle, uint64_t* out_features);
+
 /* Set a (string-valued) booster parameter, e.g. ("objective",
  * "reg:squarederror") or ("max_depth", "6"). */
 int xgb_booster_set_param(xgb_booster_t handle,
@@ -284,6 +297,78 @@ int xgb_booster_save_model_to_buffer(xgb_booster_t handle,
 int xgb_booster_load_model_from_buffer(xgb_booster_t handle,
                                        const void* data,
                                        uint64_t len);
+
+/* Save/load XGBoost's internal JSON config. */
+int xgb_booster_save_json_config(xgb_booster_t handle,
+                                 uint64_t buffer_capacity,
+                                 char* out_buffer,
+                                 uint64_t* out_len);
+int xgb_booster_load_json_config(xgb_booster_t handle, const char* config);
+
+/* Booster attributes.  `get` uses a size-then-fill contract and reports
+ * `found=0` for missing attrs. */
+int xgb_booster_set_attr(xgb_booster_t handle,
+                         const char* key,
+                         const char* value);
+int xgb_booster_delete_attr(xgb_booster_t handle, const char* key);
+int xgb_booster_get_attr(xgb_booster_t handle,
+                         const char* key,
+                         uint64_t buffer_capacity,
+                         char* out_buffer,
+                         uint64_t* out_len,
+                         int* found);
+int xgb_booster_get_attr_names(xgb_booster_t handle,
+                               uint64_t buffer_capacity,
+                               char* out_buffer,
+                               uint64_t* out_len,
+                               uint64_t* out_count);
+
+/* Booster feature names/types. */
+int xgb_booster_set_str_feature_info(xgb_booster_t handle,
+                                     const char* field,
+                                     const char** values,
+                                     size_t len);
+int xgb_booster_get_str_feature_info(xgb_booster_t handle,
+                                     const char* field,
+                                     uint64_t buffer_capacity,
+                                     char* out_buffer,
+                                     uint64_t* out_len,
+                                     uint64_t* out_count);
+
+/* Model dump APIs.  String arrays are copied into a NUL-separated buffer. */
+int xgb_booster_dump_model(xgb_booster_t handle,
+                           const char* format,
+                           int with_stats,
+                           uint64_t buffer_capacity,
+                           char* out_buffer,
+                           uint64_t* out_len,
+                           uint64_t* out_count);
+
+int xgb_booster_dump_model_with_features(xgb_booster_t handle,
+                                         const char** feature_names,
+                                         const char** feature_types,
+                                         size_t n_features,
+                                         const char* format,
+                                         int with_stats,
+                                         uint64_t buffer_capacity,
+                                         char* out_buffer,
+                                         uint64_t* out_len,
+                                         uint64_t* out_count);
+
+/* Feature score / importance.  Features are copied as NUL-separated strings;
+ * shape and scores are copied into caller-owned arrays. */
+int xgb_booster_feature_score(xgb_booster_t handle,
+                              const char* config,
+                              uint64_t feature_capacity,
+                              char* out_features,
+                              uint64_t* out_feature_len,
+                              uint64_t* out_n_features,
+                              uint64_t shape_capacity,
+                              uint64_t* out_shape,
+                              uint64_t* out_dim,
+                              uint64_t score_capacity,
+                              float* out_scores,
+                              uint64_t* out_n_scores);
 
 /* Evaluate the booster on one or more DMatrices, returning the metric line
  * XGBoost would otherwise print after each round.  `names` are user-chosen

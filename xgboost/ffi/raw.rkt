@@ -44,6 +44,10 @@
          Booster?
          xgb-booster-free/raw
          xgb-booster-create/raw
+         xgb-booster-reset/raw
+         xgb-booster-slice/raw
+         xgb-booster-boosted-rounds/raw
+         xgb-booster-num-feature/raw
          xgb-booster-set-param/raw
          xgb-booster-update-one-iter/raw
          xgb-booster-predict/raw
@@ -51,6 +55,17 @@
          xgb-booster-load-model/raw
          xgb-booster-save-model-to-buffer/raw
          xgb-booster-load-model-from-buffer/raw
+         xgb-booster-save-json-config/raw
+         xgb-booster-load-json-config/raw
+         xgb-booster-set-attr/raw
+         xgb-booster-delete-attr/raw
+         xgb-booster-get-attr/raw
+         xgb-booster-get-attr-names/raw
+         xgb-booster-set-str-feature-info/raw
+         xgb-booster-get-str-feature-info/raw
+         xgb-booster-dump-model/raw
+         xgb-booster-dump-model-with-features/raw
+         xgb-booster-feature-score/raw
          xgb-booster-eval-one-iter/raw)
 
 (define-runtime-path native-libs-dir "../native-libs")
@@ -302,6 +317,27 @@
   #:c-id xgb_booster_create
   #:wrap (allocator xgb-booster-free/raw))
 
+(define-xgb xgb-booster-reset/raw
+  (_fun _Booster -> _int)
+  #:c-id xgb_booster_reset)
+
+(define-xgb xgb-booster-slice/raw
+  (_fun _Booster _int _int _int -> _Booster/null)
+  #:c-id xgb_booster_slice
+  #:wrap (allocator xgb-booster-free/raw))
+
+(define-xgb xgb-booster-boosted-rounds/raw
+  (_fun _Booster (out : (_ptr o _int))
+        -> (rc : _int)
+        -> (values rc out))
+  #:c-id xgb_booster_boosted_rounds)
+
+(define-xgb xgb-booster-num-feature/raw
+  (_fun _Booster (out : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out))
+  #:c-id xgb_booster_num_feature)
+
 (define-xgb xgb-booster-set-param/raw
   (_fun _Booster _string/utf-8 _string/utf-8 -> _int)
   #:c-id xgb_booster_set_param)
@@ -359,6 +395,111 @@
         (_uint64 = (bytes-length buf))
         -> _int)
   #:c-id xgb_booster_load_model_from_buffer)
+
+(define-xgb xgb-booster-save-json-config/raw
+  (_fun _Booster
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_save_json_config)
+
+(define-xgb xgb-booster-load-json-config/raw
+  (_fun _Booster _string/utf-8 -> _int)
+  #:c-id xgb_booster_load_json_config)
+
+(define-xgb xgb-booster-set-attr/raw
+  (_fun _Booster _string/utf-8 _string/utf-8 -> _int)
+  #:c-id xgb_booster_set_attr)
+
+(define-xgb xgb-booster-delete-attr/raw
+  (_fun _Booster _string/utf-8 -> _int)
+  #:c-id xgb_booster_delete_attr)
+
+(define-xgb xgb-booster-get-attr/raw
+  (_fun _Booster
+        _string/utf-8
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        (found : (_ptr o _int))
+        -> (rc : _int)
+        -> (values rc out-len found))
+  #:c-id xgb_booster_get_attr)
+
+(define-xgb xgb-booster-get-attr-names/raw
+  (_fun _Booster
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        (out-count : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len out-count))
+  #:c-id xgb_booster_get_attr_names)
+
+(define-xgb xgb-booster-set-str-feature-info/raw
+  (_fun _Booster
+        _string/utf-8
+        (vals : (_list i _string/utf-8))
+        (_uint64 = (length vals))
+        -> _int)
+  #:c-id xgb_booster_set_str_feature_info)
+
+(define-xgb xgb-booster-get-str-feature-info/raw
+  (_fun _Booster
+        _string/utf-8
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        (out-count : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len out-count))
+  #:c-id xgb_booster_get_str_feature_info)
+
+(define-xgb xgb-booster-dump-model/raw
+  (_fun _Booster
+        _string/utf-8
+        _int
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        (out-count : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len out-count))
+  #:c-id xgb_booster_dump_model)
+
+(define-xgb xgb-booster-dump-model-with-features/raw
+  (_fun _Booster
+        (feature-names : (_list i _string/utf-8))
+        (feature-types : (_list i _string/utf-8))
+        (_uint64 = (length feature-names))
+        _string/utf-8
+        _int
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        (out-count : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len out-count))
+  #:c-id xgb_booster_dump_model_with_features)
+
+(define-xgb xgb-booster-feature-score/raw
+  (_fun _Booster
+        _string/utf-8
+        (feature-capacity : _uint64)
+        (feature-buf : _bytes)
+        (out-feature-len : (_ptr o _uint64))
+        (out-n-features : (_ptr o _uint64))
+        (shape-capacity : _uint64)
+        (shape-buf : _u64vector)
+        (out-dim : (_ptr o _uint64))
+        (score-capacity : _uint64)
+        (score-buf : _f32vector)
+        (out-n-scores : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-feature-len out-n-features out-dim out-n-scores))
+  #:c-id xgb_booster_feature_score)
 
 ;; XGBoosterEvalOneIter takes parallel arrays of DMatrix handles + names.
 ;; The C shim copies the result into `buf`; rc=2 / out-len communicates

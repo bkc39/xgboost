@@ -45,6 +45,10 @@ Goal: make datasets fully describable, inspectable, sliceable, and reusable.
 
 Goal: make trained models inspectable and manageable from Racket.
 
+Status: implemented for reset, slicing, boosted-round count, feature count,
+JSON config save/load, attrs, feature info, model dumps, and feature scores.
+Snapshot serialization remains tracked separately.
+
 - Lifecycle:
   - reset training caches
   - slice boosted rounds
@@ -60,6 +64,8 @@ Goal: make trained models inspectable and manageable from Racket.
   - dump model text/json
   - dump with feature names/types
   - feature score / importance APIs
+- Remaining:
+  - snapshot serialize/unserialize APIs
 - Examples:
   - booster config round-trip
   - attrs and dumps

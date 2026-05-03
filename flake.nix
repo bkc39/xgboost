@@ -80,7 +80,10 @@
                 examples/13-high-level-root-api.rkt \
                 examples/14-dmatrix-metadata.rkt \
                 examples/15-dmatrix-slicing-binary.rkt \
-                examples/16-quantile-cuts.rkt
+                examples/16-quantile-cuts.rkt \
+                examples/17-booster-lifecycle-config.rkt \
+                examples/18-booster-attrs.rkt \
+                examples/19-booster-dumps-feature-scores.rkt
               runHook postCheck
             '';
 

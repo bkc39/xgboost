@@ -589,6 +589,37 @@ xgb_dmatrix_t make_train_matrix(const RegressionFixture& f) {
   return dtrain;
 }
 
+// Train a small regressor for serialization and inspection tests.  Returns
+// owned handles; callers must free both.
+struct TrainedModel {
+  xgb_booster_t booster;
+  xgb_dmatrix_t dtrain;
+  std::vector<float> baseline_predictions;
+};
+
+TrainedModel train_small_regressor(int rounds) {
+  TrainedModel out{};
+  const auto f = make_regression_fixture();
+  out.dtrain = make_train_matrix(f);
+  if (!out.dtrain) return out;
+  const xgb_dmatrix_t cache[] = {out.dtrain};
+  out.booster = xgb_booster_create(cache, 1);
+  if (!out.booster) return out;
+  xgb_booster_set_param(out.booster, "objective", "reg:squarederror");
+  xgb_booster_set_param(out.booster, "max_depth", "3");
+  xgb_booster_set_param(out.booster, "eta", "0.1");
+  xgb_booster_set_param(out.booster, "verbosity", "0");
+  for (int i = 0; i < rounds; ++i) {
+    xgb_booster_update_one_iter(out.booster, i, out.dtrain);
+  }
+  out.baseline_predictions.assign(f.nrow, 0.0f);
+  std::uint64_t len = 0;
+  xgb_booster_predict(out.booster, out.dtrain, kPredictConfig,
+                      out.baseline_predictions.size(),
+                      out.baseline_predictions.data(), &len);
+  return out;
+}
+
 }  // namespace
 
 TEST(XgbBoosterTest, CreateFreeRoundTrip) {
@@ -731,42 +762,196 @@ TEST(XgbBoosterTest, PredictTwiceProducesIdenticalResults) {
   xgb_dmatrix_free(dtrain);
 }
 
+TEST(XgbBoosterTest, LifecycleQueriesResetAndSlice) {
+  TrainedModel m = train_small_regressor(8);
+  ASSERT_NE(m.booster, nullptr);
+  ASSERT_NE(m.dtrain, nullptr);
+
+  int rounds = 0;
+  ASSERT_EQ(xgb_booster_boosted_rounds(m.booster, &rounds), 0)
+      << "last error: " << xgb_last_error();
+  EXPECT_EQ(rounds, 8);
+
+  std::uint64_t n_features = 0;
+  ASSERT_EQ(xgb_booster_num_feature(m.booster, &n_features), 0)
+      << "last error: " << xgb_last_error();
+  EXPECT_EQ(n_features, 3u);
+
+  xgb_booster_t sliced = xgb_booster_slice(m.booster, 0, 3, 1);
+  ASSERT_NE(sliced, nullptr) << "last error: " << xgb_last_error();
+  int sliced_rounds = 0;
+  ASSERT_EQ(xgb_booster_boosted_rounds(sliced, &sliced_rounds), 0)
+      << "last error: " << xgb_last_error();
+  EXPECT_EQ(sliced_rounds, 3);
+
+  ASSERT_EQ(xgb_booster_reset(m.booster), 0)
+      << "last error: " << xgb_last_error();
+
+  xgb_booster_free(sliced);
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterTest, JsonConfigRoundTrip) {
+  TrainedModel m = train_small_regressor(2);
+  ASSERT_NE(m.booster, nullptr);
+
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_save_json_config(m.booster, 0, nullptr, &len), 2)
+      << "last error: " << xgb_last_error();
+  ASSERT_GT(len, 0u);
+  std::vector<char> config(len, '\0');
+  ASSERT_EQ(xgb_booster_save_json_config(m.booster, config.size(),
+                                         config.data(), &len),
+            0)
+      << "last error: " << xgb_last_error();
+  EXPECT_EQ(config.front(), '{');
+
+  xgb_booster_t loaded = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(loaded, nullptr);
+  ASSERT_EQ(xgb_booster_load_json_config(
+                loaded, std::string(config.data(), len).c_str()),
+            0)
+      << "last error: " << xgb_last_error();
+
+  xgb_booster_free(loaded);
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterTest, AttrsRoundTripAndDelete) {
+  xgb_booster_t b = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(b, nullptr);
+  ASSERT_EQ(xgb_booster_set_attr(b, "owner", "racket"), 0)
+      << "last error: " << xgb_last_error();
+
+  std::uint64_t len = 0;
+  int found = 0;
+  ASSERT_EQ(xgb_booster_get_attr(b, "owner", 0, nullptr, &len, &found), 2)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(found, 1);
+  std::vector<char> value(len, '\0');
+  ASSERT_EQ(xgb_booster_get_attr(b, "owner", value.size(), value.data(),
+                                 &len, &found),
+            0)
+      << "last error: " << xgb_last_error();
+  EXPECT_EQ(std::string(value.data(), len), "racket");
+
+  std::uint64_t names_len = 0;
+  std::uint64_t count = 0;
+  ASSERT_EQ(xgb_booster_get_attr_names(b, 0, nullptr, &names_len, &count), 2)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(count, 1u);
+  std::vector<char> names(names_len, '\0');
+  ASSERT_EQ(xgb_booster_get_attr_names(b, names.size(), names.data(),
+                                       &names_len, &count),
+            0);
+  EXPECT_EQ(std::string(names.data()), "owner");
+
+  ASSERT_EQ(xgb_booster_delete_attr(b, "owner"), 0)
+      << "last error: " << xgb_last_error();
+  len = 0;
+  found = 1;
+  ASSERT_EQ(xgb_booster_get_attr(b, "owner", 0, nullptr, &len, &found), 0);
+  EXPECT_EQ(found, 0);
+
+  xgb_booster_free(b);
+}
+
+TEST(XgbBoosterTest, FeatureInfoDumpAndScores) {
+  TrainedModel m = train_small_regressor(5);
+  ASSERT_NE(m.booster, nullptr);
+
+  const char* names[] = {"f0", "f1", "f2"};
+  const char* types[] = {"q", "q", "q"};
+  ASSERT_EQ(xgb_booster_set_str_feature_info(m.booster, "feature_name",
+                                             names, 3),
+            0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(xgb_booster_set_str_feature_info(m.booster, "feature_type",
+                                             types, 3),
+            0)
+      << "last error: " << xgb_last_error();
+
+  std::uint64_t feature_info_len = 0;
+  std::uint64_t feature_info_count = 0;
+  ASSERT_EQ(xgb_booster_get_str_feature_info(m.booster, "feature_name",
+                                             0, nullptr, &feature_info_len,
+                                             &feature_info_count),
+            2);
+  EXPECT_EQ(feature_info_count, 3u);
+
+  std::uint64_t dump_len = 0;
+  std::uint64_t dump_count = 0;
+  ASSERT_EQ(xgb_booster_dump_model(m.booster, "json", 0, 0, nullptr,
+                                   &dump_len, &dump_count),
+            2)
+      << "last error: " << xgb_last_error();
+  ASSERT_GT(dump_len, 0u);
+  ASSERT_GT(dump_count, 0u);
+  std::vector<char> dump(dump_len, '\0');
+  ASSERT_EQ(xgb_booster_dump_model(m.booster, "json", 0, dump.size(),
+                                   dump.data(), &dump_len, &dump_count),
+            0)
+      << "last error: " << xgb_last_error();
+  EXPECT_NE(std::string(dump.data()).find("{"), std::string::npos);
+
+  dump_len = 0;
+  dump_count = 0;
+  ASSERT_EQ(xgb_booster_dump_model_with_features(m.booster, names, types, 3,
+                                                 "text", 0, 0, nullptr,
+                                                 &dump_len, &dump_count),
+            2)
+      << "last error: " << xgb_last_error();
+  std::vector<char> named_dump(dump_len, '\0');
+  ASSERT_EQ(xgb_booster_dump_model_with_features(m.booster, names, types, 3,
+                                                 "text", 0,
+                                                 named_dump.size(),
+                                                 named_dump.data(),
+                                                 &dump_len, &dump_count),
+            0)
+      << "last error: " << xgb_last_error();
+  EXPECT_NE(std::string(named_dump.data(), dump_len).find("f"),
+            std::string::npos);
+
+  std::uint64_t feature_bytes = 0;
+  std::uint64_t n_features = 0;
+  std::uint64_t dim = 0;
+  std::uint64_t n_scores = 0;
+  const char* config =
+      "{\"importance_type\":\"weight\",\"feature_names\":[\"f0\",\"f1\",\"f2\"]}";
+  ASSERT_EQ(xgb_booster_feature_score(m.booster, config, 0, nullptr,
+                                      &feature_bytes, &n_features,
+                                      0, nullptr, &dim,
+                                      0, nullptr, &n_scores),
+            2)
+      << "last error: " << xgb_last_error();
+  ASSERT_GT(n_features, 0u);
+  ASSERT_GT(dim, 0u);
+  ASSERT_GT(n_scores, 0u);
+  std::vector<char> score_features(feature_bytes, '\0');
+  std::vector<std::uint64_t> shape(dim, 0);
+  std::vector<float> scores(n_scores, 0.0f);
+  ASSERT_EQ(xgb_booster_feature_score(m.booster, config,
+                                      score_features.size(),
+                                      score_features.data(),
+                                      &feature_bytes, &n_features,
+                                      shape.size(), shape.data(), &dim,
+                                      scores.size(), scores.data(),
+                                      &n_scores),
+            0)
+      << "last error: " << xgb_last_error();
+  EXPECT_GT(scores[0], 0.0f);
+
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
 // ---------------------------------------------------------------------------
 // Booster save/load tests
 // ---------------------------------------------------------------------------
 
 namespace {
-
-// Train a small regressor for serialization tests.  Returns owned handles;
-// callers must free both.
-struct TrainedModel {
-  xgb_booster_t booster;
-  xgb_dmatrix_t dtrain;
-  std::vector<float> baseline_predictions;
-};
-
-TrainedModel train_small_regressor(int rounds) {
-  TrainedModel out{};
-  const auto f = make_regression_fixture();
-  out.dtrain = make_train_matrix(f);
-  if (!out.dtrain) return out;
-  const xgb_dmatrix_t cache[] = {out.dtrain};
-  out.booster = xgb_booster_create(cache, 1);
-  if (!out.booster) return out;
-  xgb_booster_set_param(out.booster, "objective", "reg:squarederror");
-  xgb_booster_set_param(out.booster, "max_depth", "3");
-  xgb_booster_set_param(out.booster, "eta", "0.1");
-  xgb_booster_set_param(out.booster, "verbosity", "0");
-  for (int i = 0; i < rounds; ++i) {
-    xgb_booster_update_one_iter(out.booster, i, out.dtrain);
-  }
-  out.baseline_predictions.assign(f.nrow, 0.0f);
-  std::uint64_t len = 0;
-  xgb_booster_predict(out.booster, out.dtrain, kPredictConfig,
-                      out.baseline_predictions.size(),
-                      out.baseline_predictions.data(), &len);
-  return out;
-}
 
 std::string make_temp_path(const char* suffix) {
   // testing::TempDir is gtest's per-run scratch space; cleaned up by the

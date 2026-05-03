@@ -23,6 +23,8 @@ work with native-style buffers or XGBoost JSON array-interface strings.
 It also exposes local DMatrix metadata and dataset operations such as feature
 names/types, uint info, row slicing, binary DMatrix saving, and quantile-cut
 inspection.
+Booster inspection APIs cover lifecycle queries, JSON config round-trips,
+attributes, feature info, model dumps, and feature scores.
 
 @section{Example}
 

@@ -74,6 +74,13 @@
   [booster? (-> any/c boolean?)]
   [booster-create (->* () ((listof dmatrix?)) booster?)]
   [booster-free! (-> booster? void?)]
+  [booster-reset! (-> booster? void?)]
+  [booster-slice
+   (->* (booster? exact-integer? exact-integer?)
+        (exact-positive-integer?)
+        booster?)]
+  [booster-boosted-rounds (-> booster? exact-nonnegative-integer?)]
+  [booster-num-feature (-> booster? exact-nonnegative-integer?)]
   [booster-set-param! (-> booster? string? string? void?)]
   [booster-update-one-iter! (-> booster? exact-integer? dmatrix? void?)]
   [booster-predict
@@ -88,6 +95,30 @@
   [booster-save-model-to-bytes
    (->* (booster?) (#:format (or/c "json" "ubj")) bytes?)]
   [booster-load-model-from-bytes! (-> booster? bytes? void?)]
+  [booster-save-json-config (-> booster? string?)]
+  [booster-load-json-config! (-> booster? string? void?)]
+  [booster-set-attr! (-> booster? string? string? void?)]
+  [booster-delete-attr! (-> booster? string? void?)]
+  [booster-get-attr (-> booster? string? (or/c #f string?))]
+  [booster-get-attr-names (-> booster? (listof string?))]
+  [booster-set-feature-info! (-> booster? string? (listof string?) void?)]
+  [booster-get-feature-info (-> booster? string? (listof string?))]
+  [booster-dump-model
+   (->* (booster?)
+        (#:format (or/c "text" "json" "dot")
+         #:with-stats? any/c)
+        (listof string?))]
+  [booster-dump-model-with-features
+   (->* (booster? (listof string?) (listof string?))
+        (#:format (or/c "text" "json" "dot")
+         #:with-stats? any/c)
+        (listof string?))]
+  [booster-feature-score
+   (->* (booster?)
+        (#:importance-type string?
+         #:feature-names (or/c #f (listof string?))
+         #:config (or/c #f string?))
+        hash?)]
   [booster-eval-one-iter
    (-> booster? exact-integer?
        (listof (cons/c string? dmatrix?))
@@ -576,6 +607,26 @@
     (xgb-booster-free/raw h)
     (set-cpointer-tag! h 'Booster-freed)))
 
+(define (booster-reset! h)
+  (check-ok (xgb-booster-reset/raw h) 'booster-reset!))
+
+(define (booster-slice h begin-layer end-layer [step 1])
+  (define sliced (xgb-booster-slice/raw h begin-layer end-layer step))
+  (unless sliced
+    (error 'booster-slice
+           "XGBoost returned NULL handle: ~a" (xgb-last-error/raw)))
+  sliced)
+
+(define (booster-boosted-rounds h)
+  (define-values (rc out) (xgb-booster-boosted-rounds/raw h))
+  (check-ok rc 'booster-boosted-rounds)
+  out)
+
+(define (booster-num-feature h)
+  (define-values (rc out) (xgb-booster-num-feature/raw h))
+  (check-ok rc 'booster-num-feature)
+  out)
+
 (define (booster-set-param! h key value)
   (check-ok (xgb-booster-set-param/raw h key value) 'booster-set-param!))
 
@@ -663,6 +714,144 @@
 (define (booster-load-model-from-bytes! h buf)
   (check-ok (xgb-booster-load-model-from-buffer/raw h buf)
             'booster-load-model-from-bytes!))
+
+;; --- Config / attrs / inspection ---------------------------------------
+
+(define (booster-save-json-config h)
+  (copy-string-result 'booster-save-json-config
+                      (lambda (capacity buf)
+                        (xgb-booster-save-json-config/raw h capacity buf))))
+
+(define (booster-load-json-config! h config)
+  (check-ok (xgb-booster-load-json-config/raw h config)
+            'booster-load-json-config!))
+
+(define (booster-set-attr! h key value)
+  (check-ok (xgb-booster-set-attr/raw h key value)
+            'booster-set-attr!))
+
+(define (booster-delete-attr! h key)
+  (check-ok (xgb-booster-delete-attr/raw h key)
+            'booster-delete-attr!))
+
+(define (booster-get-attr h key)
+  (define-values (rc len found)
+    (xgb-booster-get-attr/raw h key 0 (make-bytes 0)))
+  (cond
+    [(and (zero? rc) (zero? found)) #f]
+    [(zero? rc) ""]
+    [(= rc 2)
+     (define buf (make-bytes len))
+     (define-values (rc2 len2 found2)
+       (xgb-booster-get-attr/raw h key len buf))
+     (check-ok rc2 'booster-get-attr)
+     (cond
+       [(zero? found2) #f]
+       [else (bytes->string/utf-8 buf #f 0 len2)])]
+    [else (check-ok rc 'booster-get-attr)]))
+
+(define (copy-nul-separated-result who raw)
+  (define-values (rc len count) (raw 0 (make-bytes 0)))
+  (cond
+    [(zero? rc) '()]
+    [(= rc 2)
+     (define buf (make-bytes len))
+     (define-values (rc2 len2 count2) (raw len buf))
+     (check-ok rc2 who)
+     (unless (= len2 len)
+       (error who "expected ~a bytes, got ~a" len len2))
+     (nul-separated-bytes->strings buf count2)]
+    [else (check-ok rc who)]))
+
+(define (booster-get-attr-names h)
+  (copy-nul-separated-result
+   'booster-get-attr-names
+   (lambda (capacity buf)
+     (xgb-booster-get-attr-names/raw h capacity buf))))
+
+(define (booster-set-feature-info! h field vals)
+  (check-ok (xgb-booster-set-str-feature-info/raw h field vals)
+            'booster-set-feature-info!))
+
+(define (booster-get-feature-info h field)
+  (copy-nul-separated-result
+   'booster-get-feature-info
+   (lambda (capacity buf)
+     (xgb-booster-get-str-feature-info/raw h field capacity buf))))
+
+(define (booster-dump-model h #:format [fmt "text"] #:with-stats? [stats? #f])
+  (copy-nul-separated-result
+   'booster-dump-model
+   (lambda (capacity buf)
+     (xgb-booster-dump-model/raw h fmt (if stats? 1 0) capacity buf))))
+
+(define (booster-dump-model-with-features h feature-names feature-types
+                                          #:format [fmt "text"]
+                                          #:with-stats? [stats? #f])
+  (unless (= (length feature-names) (length feature-types))
+    (error 'booster-dump-model-with-features
+           "feature name count ~a does not match feature type count ~a"
+           (length feature-names)
+           (length feature-types)))
+  (copy-nul-separated-result
+   'booster-dump-model-with-features
+   (lambda (capacity buf)
+     (xgb-booster-dump-model-with-features/raw h feature-names feature-types
+                                               fmt (if stats? 1 0)
+                                               capacity buf))))
+
+(define (json-quote-string s)
+  (format "~s" s))
+
+(define (feature-score-config importance-type feature-names)
+  (define base (format "\"importance_type\":~a"
+                       (json-quote-string importance-type)))
+  (define names
+    (if feature-names
+        (format ",\"feature_names\":[~a]"
+                (string-join (map json-quote-string feature-names) ","))
+        ""))
+  (format "{~a~a}" base names))
+
+(define (u64vector->list vec)
+  (for/list ([i (in-range (u64vector-length vec))])
+    (u64vector-ref vec i)))
+
+(define (booster-feature-score h
+                               #:importance-type [importance-type "weight"]
+                               #:feature-names [feature-names #f]
+                               #:config [config #f])
+  (define cfg (or config (feature-score-config importance-type feature-names)))
+  (define-values (rc feature-len n-features dim n-scores)
+    (xgb-booster-feature-score/raw h cfg
+                                   0 (make-bytes 0)
+                                   0 (make-u64vector 0)
+                                   0 (make-f32vector 0)))
+  (cond
+    [(zero? rc)
+     (hash 'features '()
+           'shape '()
+           'scores (make-f32vector 0))]
+    [(= rc 2)
+     (define feature-buf (make-bytes feature-len))
+     (define shape-buf (make-u64vector dim))
+     (define score-buf (make-f32vector n-scores))
+     (define-values (rc2 feature-len2 n-features2 dim2 n-scores2)
+       (xgb-booster-feature-score/raw h cfg
+                                      feature-len feature-buf
+                                      dim shape-buf
+                                      n-scores score-buf))
+     (check-ok rc2 'booster-feature-score)
+     (unless (and (= feature-len2 feature-len)
+                  (= n-features2 n-features)
+                  (= dim2 dim)
+                  (= n-scores2 n-scores))
+       (error 'booster-feature-score
+              "feature score output shape changed during copy"))
+     (hash 'features (nul-separated-bytes->strings feature-buf n-features2)
+           'shape (u64vector->list shape-buf)
+           'scores score-buf)]
+    [else (check-ok rc 'booster-feature-score)]))
 
 ;; --- Eval one iter ------------------------------------------------------
 
@@ -983,6 +1172,106 @@
       (dmatrix-create-from-mat (make-data) 2 3))
     (collect-garbage) (collect-garbage) (collect-garbage)
     (check-true #t))
+
+  ;; --- Phase 3 metadata APIs --------------------------------------------
+
+  (test-case "dmatrix-set-feature-info! / dmatrix-get-feature-info round-trip"
+    (define dm (dmatrix-create-from-mat (make-data) 2 3))
+    (dmatrix-set-feature-info! dm "feature_name" '("height" "weight" "age"))
+    (dmatrix-set-feature-info! dm "feature_type" '("q" "q" "i"))
+    (check-equal? (dmatrix-get-feature-info dm "feature_name")
+                  '("height" "weight" "age"))
+    (check-equal? (dmatrix-get-feature-info dm "feature_type")
+                  '("q" "q" "i"))
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-get-feature-info on unset field returns empty list"
+    (define dm (dmatrix-create-from-mat (make-data) 2 3))
+    (check-equal? (dmatrix-get-feature-info dm "feature_name") '())
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-set-uint-info! group + dmatrix-get-uint-info group_ptr"
+    ;; XGBoost reads "group" as ranking-group sizes and exposes the
+    ;; cumulative form via "group_ptr" (so {2} sets to {0,2}).
+    (define dm (dmatrix-create-from-mat (make-data) 2 3))
+    (dmatrix-set-uint-info! dm "group" (u32vector 2))
+    (define g (dmatrix-get-uint-info dm "group_ptr"))
+    (check-equal? (u32vector-length g) 2)
+    (check-equal? (u32vector-ref g 0) 0)
+    (check-equal? (u32vector-ref g 1) 2)
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-set-info-from-interface! drives label round-trip"
+    (define dm (dmatrix-create-from-mat (make-data) 2 3))
+    (define labels (f32vector 0.25 0.75))
+    (dmatrix-set-info-from-interface!
+     dm "label"
+     (format "{\"data\":[~a,false],\"typestr\":\"<f4\",\"shape\":[2],\"version\":3}"
+             (cast (f32vector->cpointer labels) _pointer _uintptr)))
+    (define got (dmatrix-get-float-info dm "label"))
+    (check-equal? (f32vector-length got) 2)
+    (check-= (f32vector-ref got 0) 0.25 1e-6)
+    (check-= (f32vector-ref got 1) 0.75 1e-6)
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-slice picks rows in given order"
+    (define data (f32vector 1.0 2.0
+                            3.0 4.0
+                            5.0 6.0))
+    (define dm (dmatrix-create-from-mat data 3 2))
+    (define sliced (dmatrix-slice dm '(2 0)))
+    (check-equal? (dmatrix-nrow sliced) 2)
+    (check-equal? (dmatrix-ncol sliced) 2)
+    (check-equal? (dmatrix->list sliced)
+                  '((5.0 6.0) (1.0 2.0)))
+    (dmatrix-free! sliced)
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-slice accepts s32vector and rejects bad indices"
+    (define dm (dmatrix-create-from-mat (make-data) 2 3))
+    (check-pred dmatrix? (dmatrix-slice dm (s32vector 1 0)))
+    (check-exn exn:fail:contract?
+               (lambda ()
+                 (dmatrix-slice dm '(-1))))
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-save-binary! writes a file XGBoost can reload"
+    (define dm (dmatrix-create-from-mat (make-data) 2 3))
+    (define tmp (make-temporary-file "xgboost-dmat-~a.buffer"))
+    (dynamic-wind
+      void
+      (lambda ()
+        (dmatrix-save-binary! dm tmp)
+        (define loaded
+          (dmatrix-create-from-uri
+           (format "{\"uri\":\"~a\",\"silent\":1}" (path->string tmp))))
+        (check-equal? (dmatrix-nrow loaded) 2)
+        (check-equal? (dmatrix-ncol loaded) 3)
+        (dmatrix-free! loaded))
+      (lambda () (when (file-exists? tmp) (delete-file tmp))))
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-get-quantile-cut returns array-interface JSON after training"
+    ;; Quantile cuts are computed during training on a hist-method booster.
+    (define dm
+      (dmatrix-create-from-mat
+       (f32vector 1.0 2.0 0.5 2.0 1.0 1.5 3.0 0.5 0.0
+                  0.5 3.0 2.0 4.0 2.0 1.0 1.5 1.5 0.5
+                  2.5 3.5 1.5 0.0 1.0 0.0)
+       8 3))
+    (dmatrix-set-float-info! dm "label"
+                             (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0))
+    (define b (booster-create (list dm)))
+    (booster-set-param! b "objective" "reg:squarederror")
+    (booster-set-param! b "tree_method" "hist")
+    (booster-set-param! b "max_depth" "2")
+    (booster-set-param! b "verbosity" "0")
+    (booster-update-one-iter! b 0 dm)
+    (define-values (indptr-json data-json) (dmatrix-get-quantile-cut dm))
+    (check-true (regexp-match? #rx"\"shape\"" indptr-json))
+    (check-true (regexp-match? #rx"\"shape\"" data-json))
+    (booster-free! b)
+    (dmatrix-free! dm))
 
   ;; --- Booster -----------------------------------------------------------
 
