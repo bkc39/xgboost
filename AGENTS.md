@@ -27,8 +27,14 @@ cmake --build cpp/build
 ctest --test-dir cpp/build --output-on-failure
 
 raco test xgboost/
+raco test examples/e2e/
 racket -l xgboost
 ```
+
+The default `nix build` runs both `raco test ./xgboost/` and
+`raco test examples/e2e/`. The numbered examples directly under `examples/`
+are narrative demos and should stay manually runnable, but they are not all
+part of the default package check.
 
 To force re-provisioning of the dev-shell Racket user scope, remove `.racket-user/`.
 
@@ -48,6 +54,12 @@ To force re-provisioning of the dev-shell Racket user scope, remove `.racket-use
 - `xgboost/ffi.rkt` - safe contracted low-level wrappers.
 - `xgboost/ffi/raw.rkt` - direct `define-ffi-definer` bindings.
 - `xgboost/private/install-xgboost-native.rkt` - copies `libxgbcompat.*` from `$XGBOOST_NATIVE_LIB_PATH/lib` into `native-libs/`.
+- `examples/e2e/` - assertion-backed examples; each exports `run-example`,
+  prints concise output from `module+ main`, and verifies behavior from
+  `module+ test`.
+
+Every new public API or user-visible feature should include an
+example-backed E2E test in the same change set unless that is impractical.
 
 ## Nix Notes
 

@@ -74,6 +74,7 @@
             checkPhase = ''
               runHook preCheck
               raco test ./xgboost/
+              raco test examples/e2e/
               runHook postCheck
             '';
 

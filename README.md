@@ -48,11 +48,24 @@ ctest --test-dir cpp/build --output-on-failure
 
 # run the Racket tests
 raco test xgboost/
+raco test examples/e2e/
+
+# run a narrative example manually
+racket examples/01-train-regression.rkt
 ```
+
+`nix build` runs both the package tests and the fast assertion-backed examples
+under `examples/e2e/`. The numbered examples directly under `examples/` are
+longer narrative demos for manual smoke testing and user-facing walkthroughs.
+
+Every new public API or user-visible feature should land with an
+example-backed E2E test unless that is impractical for runtime, platform, or
+dependency reasons.
 
 ## Layout
 
 - `cpp/` - C++ wrapper library (`libxgbcompat`) built with CMake, links against `pkgs.xgboost`.
+- `examples/e2e/` - fast RackUnit-backed examples run by default checks.
 - `xgboost/main.rkt` - high-level root API for `(require xgboost)`.
 - `xgboost/ffi.rkt` - contracted low-level Racket wrappers.
 - `xgboost/ffi/raw.rkt` - direct C FFI bindings.
