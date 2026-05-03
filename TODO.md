@@ -21,11 +21,11 @@
 
 - [x] Global config, build-info, and log callback APIs.
 - [x] DMatrix constructors: file/URI, CSR, CSC, dense array interface, columnar array interface.
-- [ ] DMatrix metadata: string feature info, uint info, info interface, slicing, save-binary, quantile cuts.
+- [x] DMatrix metadata: string feature info, uint info, info interface, slicing, save-binary, quantile cuts.
 - [ ] Booster APIs: reset, slice, boosted rounds, number of features, custom objective training.
 - [ ] Booster serialization/config: save/load config, snapshots, dumps, attrs, feature scores.
 - [ ] Inplace prediction APIs, including CUDA array and columnar variants.
-- [ ] Distributed tracker and communicator APIs.
+- [ ] Distributed tracker and communicator APIs. Deferred until the local API implementation is robust.
 
 ## Phase 4: CUDA And Linux Validation
 

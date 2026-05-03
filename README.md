@@ -50,7 +50,10 @@ ctest --test-dir cpp/build --output-on-failure
 raco test xgboost/
 raco test examples/11-global-apis.rkt \
   examples/12-dmatrix-constructors.rkt \
-  examples/13-high-level-root-api.rkt
+  examples/13-high-level-root-api.rkt \
+  examples/14-dmatrix-metadata.rkt \
+  examples/15-dmatrix-slicing-binary.rkt \
+  examples/16-quantile-cuts.rkt
 
 # run a narrative example manually
 racket examples/01-train-regression.rkt
@@ -74,4 +77,5 @@ dependency reasons.
 - `xgboost/private/` - native library installer implementation.
 - `flake.nix` - `cpp` and `racket` derivations.
 
-See `AGENTS.md` for architecture notes and the current roadmap.
+See `AGENTS.md` for architecture notes and `LOCAL_API_PLAN.md` for the local
+API roadmap.

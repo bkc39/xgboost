@@ -25,12 +25,20 @@
          xgb-dmatrix-create-from-csr/raw
          xgb-dmatrix-create-from-csc/raw
          xgb-dmatrix-create-from-columnar/raw
+         xgb-dmatrix-slice/raw
          xgb-dmatrix-set-float-info/raw
+         xgb-dmatrix-set-uint-info/raw
+         xgb-dmatrix-set-info-from-interface/raw
+         xgb-dmatrix-set-str-feature-info/raw
+         xgb-dmatrix-get-str-feature-info/raw
          xgb-dmatrix-num-row/raw
          xgb-dmatrix-num-col/raw
          xgb-dmatrix-get-float-info/raw
+         xgb-dmatrix-get-uint-info/raw
          xgb-dmatrix-num-non-missing/raw
          xgb-dmatrix-get-data-as-csr/raw
+         xgb-dmatrix-save-binary/raw
+         xgb-dmatrix-get-quantile-cut/raw
          _Booster
          _Booster/null
          Booster?
@@ -155,6 +163,15 @@
   #:c-id xgb_dmatrix_create_from_columnar
   #:wrap (allocator xgb-dmatrix-free/raw))
 
+(define-xgb xgb-dmatrix-slice/raw
+  (_fun _DMatrix
+        (indices : _s32vector)
+        (_size = (s32vector-length indices))
+        _int
+        -> _DMatrix/null)
+  #:c-id xgb_dmatrix_slice
+  #:wrap (allocator xgb-dmatrix-free/raw))
+
 (define-xgb xgb-dmatrix-set-float-info/raw
   (_fun _DMatrix
         _string/utf-8
@@ -162,6 +179,37 @@
         (_size = (f32vector-length vals))
         -> _int)
   #:c-id xgb_dmatrix_set_float_info)
+
+(define-xgb xgb-dmatrix-set-uint-info/raw
+  (_fun _DMatrix
+        _string/utf-8
+        (vals : _u32vector)
+        (_size = (u32vector-length vals))
+        -> _int)
+  #:c-id xgb_dmatrix_set_uint_info)
+
+(define-xgb xgb-dmatrix-set-info-from-interface/raw
+  (_fun _DMatrix _string/utf-8 _string/utf-8 -> _int)
+  #:c-id xgb_dmatrix_set_info_from_interface)
+
+(define-xgb xgb-dmatrix-set-str-feature-info/raw
+  (_fun _DMatrix
+        _string/utf-8
+        (vals : (_list i _string/utf-8))
+        (_uint64 = (length vals))
+        -> _int)
+  #:c-id xgb_dmatrix_set_str_feature_info)
+
+(define-xgb xgb-dmatrix-get-str-feature-info/raw
+  (_fun _DMatrix
+        _string/utf-8
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        (out-count : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len out-count))
+  #:c-id xgb_dmatrix_get_str_feature_info)
 
 (define-xgb xgb-dmatrix-num-row/raw
   (_fun _DMatrix (out : (_ptr o _uint64))
@@ -189,6 +237,15 @@
         -> (values rc out-len out-ptr))
   #:c-id xgb_dmatrix_get_float_info)
 
+(define-xgb xgb-dmatrix-get-uint-info/raw
+  (_fun _DMatrix
+        _string/utf-8
+        (out-len : (_ptr o _uint64))
+        (out-ptr : (_ptr o _pointer))
+        -> (rc : _int)
+        -> (values rc out-len out-ptr))
+  #:c-id xgb_dmatrix_get_uint_info)
+
 (define-xgb xgb-dmatrix-num-non-missing/raw
   (_fun _DMatrix (out : (_ptr o _uint64))
         -> (rc : _int)
@@ -206,6 +263,23 @@
         (data : _f32vector)
         -> _int)
   #:c-id xgb_dmatrix_get_data_as_csr)
+
+(define-xgb xgb-dmatrix-save-binary/raw
+  (_fun _DMatrix _path _int -> _int)
+  #:c-id xgb_dmatrix_save_binary)
+
+(define-xgb xgb-dmatrix-get-quantile-cut/raw
+  (_fun _DMatrix
+        _string/utf-8
+        (indptr-capacity : _uint64)
+        (indptr-buf : _bytes)
+        (out-indptr-len : (_ptr o _uint64))
+        (data-capacity : _uint64)
+        (data-buf : _bytes)
+        (out-data-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-indptr-len out-data-len))
+  #:c-id xgb_dmatrix_get_quantile_cut)
 
 ;; ---------------------------------------------------------------------------
 ;; Booster: opaque handle.  Same allocator/deallocator pattern as DMatrix.

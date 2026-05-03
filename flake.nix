@@ -77,7 +77,10 @@
               raco test \
                 examples/11-global-apis.rkt \
                 examples/12-dmatrix-constructors.rkt \
-                examples/13-high-level-root-api.rkt
+                examples/13-high-level-root-api.rkt \
+                examples/14-dmatrix-metadata.rkt \
+                examples/15-dmatrix-slicing-binary.rkt \
+                examples/16-quantile-cuts.rkt
               runHook postCheck
             '';
 

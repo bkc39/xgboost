@@ -20,6 +20,9 @@ The @racketmodname[xgboost/ffi] module also exposes lower-level DMatrix
 constructors for URI loading, dense array-interface input, CSR, CSC, and
 columnar array-interface input. These are intended for callers that already
 work with native-style buffers or XGBoost JSON array-interface strings.
+It also exposes local DMatrix metadata and dataset operations such as feature
+names/types, uint info, row slicing, binary DMatrix saving, and quantile-cut
+inspection.
 
 @section{Example}
 

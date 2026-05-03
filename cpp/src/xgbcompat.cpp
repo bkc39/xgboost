@@ -315,6 +315,36 @@ xgb_dmatrix_t xgb_dmatrix_create_from_columnar(const char* data,
   }
 }
 
+xgb_dmatrix_t xgb_dmatrix_slice(xgb_dmatrix_t handle,
+                                const int32_t* indices,
+                                size_t len,
+                                int allow_groups) {
+  if (!handle || (!indices && len > 0)) {
+    xgbcompat::g_last_error = "xgb_dmatrix_slice: invalid argument";
+    return nullptr;
+  }
+  DMatrixHandle out = nullptr;
+  try {
+    static_assert(sizeof(int32_t) == sizeof(int),
+                  "XGBoost row indices must be 32-bit ints");
+    xgbcompat::check(
+        XGDMatrixSliceDMatrixEx(static_cast<DMatrixHandle>(handle),
+                                reinterpret_cast<const int*>(indices),
+                                static_cast<bst_ulong>(len),
+                                &out,
+                                allow_groups),
+        "XGDMatrixSliceDMatrixEx");
+    return static_cast<xgb_dmatrix_t>(out);
+  } catch (const std::exception&) {
+    if (out) XGDMatrixFree(out);
+    return nullptr;
+  } catch (...) {
+    if (out) XGDMatrixFree(out);
+    xgbcompat::g_last_error = "xgb_dmatrix_slice: unknown exception";
+    return nullptr;
+  }
+}
+
 void xgb_dmatrix_free(xgb_dmatrix_t handle) {
   if (handle) {
     // XGDMatrixFree returns an rc, but we have nowhere to surface it on a
@@ -343,6 +373,135 @@ int xgb_dmatrix_set_float_info(xgb_dmatrix_t handle,
   } catch (...) {
     xgbcompat::g_last_error =
         "xgb_dmatrix_set_float_info: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_dmatrix_set_uint_info(xgb_dmatrix_t handle,
+                              const char* field,
+                              const uint32_t* values,
+                              size_t len) {
+  if (!handle || !field || (!values && len > 0)) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_set_uint_info: invalid argument";
+    return 1;
+  }
+  try {
+    static_assert(sizeof(uint32_t) == sizeof(unsigned),
+                  "XGBoost uint info must use 32-bit unsigned values");
+    xgbcompat::check(
+        XGDMatrixSetUIntInfo(static_cast<DMatrixHandle>(handle),
+                             field,
+                             reinterpret_cast<const unsigned*>(values),
+                             static_cast<bst_ulong>(len)),
+        "XGDMatrixSetUIntInfo");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_set_uint_info: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_dmatrix_set_info_from_interface(xgb_dmatrix_t handle,
+                                        const char* field,
+                                        const char* data) {
+  if (!handle || !field || !data) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_set_info_from_interface: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGDMatrixSetInfoFromInterface(static_cast<DMatrixHandle>(handle),
+                                      field,
+                                      data),
+        "XGDMatrixSetInfoFromInterface");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_set_info_from_interface: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_dmatrix_set_str_feature_info(xgb_dmatrix_t handle,
+                                     const char* field,
+                                     const char** values,
+                                     size_t len) {
+  if (!handle || !field || (!values && len > 0)) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_set_str_feature_info: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGDMatrixSetStrFeatureInfo(static_cast<DMatrixHandle>(handle),
+                                   field,
+                                   values,
+                                   static_cast<bst_ulong>(len)),
+        "XGDMatrixSetStrFeatureInfo");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_set_str_feature_info: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_dmatrix_get_str_feature_info(xgb_dmatrix_t handle,
+                                     const char* field,
+                                     uint64_t buffer_capacity,
+                                     char* out_buffer,
+                                     uint64_t* out_len,
+                                     uint64_t* out_count) {
+  if (!handle || !field || !out_len || !out_count ||
+      (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_get_str_feature_info: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  *out_count = 0;
+  try {
+    bst_ulong n = 0;
+    const char** values = nullptr;
+    xgbcompat::check(
+        XGDMatrixGetStrFeatureInfo(static_cast<DMatrixHandle>(handle),
+                                   field,
+                                   &n,
+                                   &values),
+        "XGDMatrixGetStrFeatureInfo");
+    uint64_t need = 0;
+    for (bst_ulong i = 0; i < n; ++i) {
+      need += static_cast<uint64_t>(std::strlen(values[i])) + 1;
+    }
+    *out_len = need;
+    *out_count = static_cast<uint64_t>(n);
+    if (buffer_capacity < need) {
+      return 2;
+    }
+    if (need > 0 && out_buffer) {
+      char* cursor = out_buffer;
+      for (bst_ulong i = 0; i < n; ++i) {
+        const size_t len_i = std::strlen(values[i]);
+        std::copy(values[i], values[i] + len_i, cursor);
+        cursor += len_i;
+        *cursor++ = '\0';
+      }
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_get_str_feature_info: unknown exception";
     return 1;
   }
 }
@@ -414,6 +573,38 @@ int xgb_dmatrix_get_float_info(xgb_dmatrix_t handle,
   }
 }
 
+int xgb_dmatrix_get_uint_info(xgb_dmatrix_t handle,
+                              const char* field,
+                              uint64_t* out_len,
+                              const uint32_t** out_ptr) {
+  if (!handle || !field || !out_len || !out_ptr) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_get_uint_info: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  *out_ptr = nullptr;
+  try {
+    bst_ulong n = 0;
+    const unsigned* data = nullptr;
+    xgbcompat::check(
+        XGDMatrixGetUIntInfo(static_cast<DMatrixHandle>(handle),
+                             field,
+                             &n,
+                             &data),
+        "XGDMatrixGetUIntInfo");
+    *out_len = static_cast<uint64_t>(n);
+    *out_ptr = reinterpret_cast<const uint32_t*>(data);
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_get_uint_info: unknown exception";
+    return 1;
+  }
+}
+
 int xgb_dmatrix_num_non_missing(xgb_dmatrix_t handle, uint64_t* out_nnz) {
   if (!handle || !out_nnz) {
     xgbcompat::g_last_error =
@@ -462,6 +653,78 @@ int xgb_dmatrix_get_data_as_csr(xgb_dmatrix_t handle,
   } catch (...) {
     xgbcompat::g_last_error =
         "xgb_dmatrix_get_data_as_csr: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_dmatrix_save_binary(xgb_dmatrix_t handle,
+                            const char* path,
+                            int silent) {
+  if (!handle || !path) {
+    xgbcompat::g_last_error = "xgb_dmatrix_save_binary: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGDMatrixSaveBinary(static_cast<DMatrixHandle>(handle), path, silent),
+        "XGDMatrixSaveBinary");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_save_binary: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_dmatrix_get_quantile_cut(xgb_dmatrix_t handle,
+                                 const char* config,
+                                 uint64_t indptr_capacity,
+                                 char* out_indptr,
+                                 uint64_t* out_indptr_len,
+                                 uint64_t data_capacity,
+                                 char* out_data,
+                                 uint64_t* out_data_len) {
+  if (!handle || !config || !out_indptr_len || !out_data_len ||
+      (indptr_capacity > 0 && !out_indptr) ||
+      (data_capacity > 0 && !out_data)) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_get_quantile_cut: invalid argument";
+    return 1;
+  }
+  *out_indptr_len = 0;
+  *out_data_len = 0;
+  try {
+    const char* indptr = nullptr;
+    const char* data = nullptr;
+    xgbcompat::check(
+        XGDMatrixGetQuantileCut(static_cast<DMatrixHandle>(handle),
+                                config,
+                                &indptr,
+                                &data),
+        "XGDMatrixGetQuantileCut");
+    const uint64_t indptr_len =
+        static_cast<uint64_t>(indptr ? std::strlen(indptr) : 0);
+    const uint64_t data_len =
+        static_cast<uint64_t>(data ? std::strlen(data) : 0);
+    *out_indptr_len = indptr_len;
+    *out_data_len = data_len;
+    if (indptr_capacity < indptr_len || data_capacity < data_len) {
+      return 2;
+    }
+    if (indptr_len > 0 && out_indptr) {
+      std::copy(indptr, indptr + indptr_len, out_indptr);
+    }
+    if (data_len > 0 && out_data) {
+      std::copy(data, data + data_len, out_data);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_get_quantile_cut: unknown exception";
     return 1;
   }
 }

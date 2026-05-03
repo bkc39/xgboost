@@ -50,13 +50,26 @@
    (->* ((listof f32vector?))
         (real?)
         dmatrix?)]
+  [dmatrix-slice
+   (->* (dmatrix? (or/c s32vector?
+                         (listof exact-nonnegative-integer?)
+                         (vectorof exact-nonnegative-integer?)))
+        (#:allow-groups? any/c)
+        dmatrix?)]
   [dmatrix-set-float-info! (-> dmatrix? string? f32vector? void?)]
+  [dmatrix-set-uint-info! (-> dmatrix? string? u32vector? void?)]
+  [dmatrix-set-info-from-interface! (-> dmatrix? string? string? void?)]
+  [dmatrix-set-feature-info! (-> dmatrix? string? (listof string?) void?)]
   [dmatrix-free! (-> dmatrix? void?)]
   [dmatrix-nrow (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix-ncol (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix-get-float-info (-> dmatrix? string? f32vector?)]
+  [dmatrix-get-uint-info (-> dmatrix? string? u32vector?)]
+  [dmatrix-get-feature-info (-> dmatrix? string? (listof string?))]
   [dmatrix-num-non-missing (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix->list (-> dmatrix? (listof (listof real?)))]
+  [dmatrix-save-binary! (->* (dmatrix? path-string?) (#:silent? any/c) void?)]
+  [dmatrix-get-quantile-cut (->* (dmatrix?) (string?) (values string? string?))]
   [dmatrix-show (->* (dmatrix?) (output-port?) void?)]
   [booster? (-> any/c boolean?)]
   [booster-create (->* () ((listof dmatrix?)) booster?)]
@@ -279,9 +292,78 @@
   (dmatrix-create-from-columnar-array-interface data-json
                                                 (missing-config missing)))
 
+(define (sequence->s32vector who xs)
+  (define vals
+    (cond
+      [(s32vector? xs) #f]
+      [(list? xs) xs]
+      [(vector? xs) (vector->list xs)]
+      [else (raise-argument-error who "list, vector, or s32vector" xs)]))
+  (cond
+    [(s32vector? xs) xs]
+    [else
+     (for ([v (in-list vals)])
+       (unless (and (exact-integer? v) (>= v 0))
+         (raise-argument-error who "nonnegative exact integer row index" v)))
+     (list->s32vector vals)]))
+
+(define (dmatrix-slice h rows #:allow-groups? [allow-groups? #f])
+  (define idx (sequence->s32vector 'dmatrix-slice rows))
+  (define sliced
+    (xgb-dmatrix-slice/raw h idx (if allow-groups? 1 0)))
+  (unless sliced
+    (error 'dmatrix-slice
+           "XGBoost returned NULL handle: ~a" (xgb-last-error/raw)))
+  sliced)
+
 (define (dmatrix-set-float-info! h field vals)
   (check-ok (xgb-dmatrix-set-float-info/raw h field vals)
             'dmatrix-set-float-info!))
+
+(define (dmatrix-set-uint-info! h field vals)
+  (check-ok (xgb-dmatrix-set-info-from-interface/raw
+             h field (u32-array-interface vals))
+            'dmatrix-set-uint-info!))
+
+(define (dmatrix-set-info-from-interface! h field data-json)
+  (check-ok (xgb-dmatrix-set-info-from-interface/raw h field data-json)
+            'dmatrix-set-info-from-interface!))
+
+(define (dmatrix-set-feature-info! h field vals)
+  (check-ok (xgb-dmatrix-set-str-feature-info/raw h field vals)
+            'dmatrix-set-feature-info!))
+
+(define (nul-separated-bytes->strings bs count)
+  (define len (bytes-length bs))
+  (let loop ([start 0] [i 0] [acc '()])
+    (cond
+      [(= i count) (reverse acc)]
+      [else
+       (define end
+         (let find-nul ([j start])
+           (cond
+             [(>= j len) len]
+             [(zero? (bytes-ref bs j)) j]
+             [else (find-nul (add1 j))])))
+       (loop (add1 end)
+             (add1 i)
+             (cons (bytes->string/utf-8 bs #f start end) acc))])))
+
+(define (dmatrix-get-feature-info h field)
+  (define-values (rc len count)
+    (xgb-dmatrix-get-str-feature-info/raw h field 0 (make-bytes 0)))
+  (cond
+    [(zero? rc) '()]
+    [(= rc 2)
+     (define buf (make-bytes len))
+     (define-values (rc2 len2 count2)
+       (xgb-dmatrix-get-str-feature-info/raw h field len buf))
+     (check-ok rc2 'dmatrix-get-feature-info)
+     (unless (= len2 len)
+       (error 'dmatrix-get-feature-info
+              "expected ~a bytes, got ~a" len len2))
+     (nul-separated-bytes->strings buf count2)]
+    [else (check-ok rc 'dmatrix-get-feature-info)]))
 
 (define (dmatrix-free! h)
   (when (cpointer-has-tag? h 'DMatrix)
@@ -310,10 +392,46 @@
     (memcpy (f32vector->cpointer result) ptr len _float))
   result)
 
+(define (dmatrix-get-uint-info h field)
+  (define-values (rc len ptr) (xgb-dmatrix-get-uint-info/raw h field))
+  (check-ok rc 'dmatrix-get-uint-info)
+  (define result (make-u32vector len))
+  (when (and ptr (> len 0))
+    (memcpy (u32vector->cpointer result) ptr len _uint32))
+  result)
+
 (define (dmatrix-num-non-missing h)
   (define-values (rc out) (xgb-dmatrix-num-non-missing/raw h))
   (check-ok rc 'dmatrix-num-non-missing)
   out)
+
+(define (dmatrix-save-binary! h path #:silent? [silent? #t])
+  (check-ok (xgb-dmatrix-save-binary/raw h path (if silent? 1 0))
+            'dmatrix-save-binary!))
+
+(define (dmatrix-get-quantile-cut h [config "{}"])
+  (define-values (rc indptr-len data-len)
+    (xgb-dmatrix-get-quantile-cut/raw h config
+                                      0 (make-bytes 0)
+                                      0 (make-bytes 0)))
+  (cond
+    [(zero? rc) (values "" "")]
+    [(= rc 2)
+     (define indptr-buf (make-bytes indptr-len))
+     (define data-buf (make-bytes data-len))
+     (define-values (rc2 indptr-len2 data-len2)
+       (xgb-dmatrix-get-quantile-cut/raw h config
+                                         indptr-len indptr-buf
+                                         data-len data-buf))
+     (check-ok rc2 'dmatrix-get-quantile-cut)
+     (unless (and (= indptr-len2 indptr-len)
+                  (= data-len2 data-len))
+       (error 'dmatrix-get-quantile-cut
+              "expected ~a/~a bytes, got ~a/~a"
+              indptr-len data-len indptr-len2 data-len2))
+     (values (bytes->string/utf-8 indptr-buf #f 0 indptr-len)
+             (bytes->string/utf-8 data-buf #f 0 data-len))]
+    [else (check-ok rc 'dmatrix-get-quantile-cut)]))
 
 ;; Reconstruct a dense (nrow x ncol) list-of-lists from the DMatrix's CSR
 ;; storage.  Missing entries (absent in the CSR) materialize as `+nan.0`;

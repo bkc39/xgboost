@@ -29,7 +29,10 @@ ctest --test-dir cpp/build --output-on-failure
 raco test xgboost/
 raco test examples/11-global-apis.rkt \
   examples/12-dmatrix-constructors.rkt \
-  examples/13-high-level-root-api.rkt
+  examples/13-high-level-root-api.rkt \
+  examples/14-dmatrix-metadata.rkt \
+  examples/15-dmatrix-slicing-binary.rkt \
+  examples/16-quantile-cuts.rkt
 racket -l xgboost
 ```
 
@@ -76,4 +79,5 @@ The package install command should use `--name xgboost` so Racket registers the 
 
 ## Roadmap
 
-Current phases are tracked in `TODO.md`: docs/rename, high-level API, missing C API coverage, CUDA/Linux validation, and cleanup.
+Current local implementation phases are tracked in `LOCAL_API_PLAN.md`.
+`TODO.md` remains a compact checklist for broad project status.

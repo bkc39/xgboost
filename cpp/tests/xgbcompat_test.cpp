@@ -365,6 +365,186 @@ TEST(XgbDMatrixTest, NumNonMissingAndCsrRoundTrip) {
   xgb_dmatrix_free(h);
 }
 
+TEST(XgbDMatrixTest, StringFeatureInfoRoundTrip) {
+  const std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_mat(data.data(), 2, 2, -1.0f);
+  ASSERT_NE(h, nullptr);
+
+  const char* names[] = {"height", "weight"};
+  const char* types[] = {"q", "q"};
+  ASSERT_EQ(xgb_dmatrix_set_str_feature_info(h, "feature_name", names, 2), 0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(xgb_dmatrix_set_str_feature_info(h, "feature_type", types, 2), 0)
+      << "last error: " << xgb_last_error();
+
+  std::uint64_t len = 0;
+  std::uint64_t count = 0;
+  ASSERT_EQ(xgb_dmatrix_get_str_feature_info(h, "feature_name", 0, nullptr,
+                                             &len, &count),
+            2);
+  EXPECT_EQ(count, 2u);
+  std::vector<char> buf(len, '\0');
+  ASSERT_EQ(xgb_dmatrix_get_str_feature_info(h, "feature_name", buf.size(),
+                                             buf.data(), &len, &count),
+            0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(count, 2u);
+  const std::string first(buf.data());
+  const std::string second(buf.data() + first.size() + 1);
+  EXPECT_EQ(first, "height");
+  EXPECT_EQ(second, "weight");
+
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, UIntInfoRoundTrip) {
+  const std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<std::uint32_t> group = {2u};
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_mat(data.data(), 2, 2, -1.0f);
+  ASSERT_NE(h, nullptr);
+
+  ASSERT_EQ(xgb_dmatrix_set_uint_info(h, "group", group.data(), group.size()), 0)
+      << "last error: " << xgb_last_error();
+  std::uint64_t len = 0;
+  const std::uint32_t* out = nullptr;
+  ASSERT_EQ(xgb_dmatrix_get_uint_info(h, "group_ptr", &len, &out), 0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(len, 2u);
+  ASSERT_NE(out, nullptr);
+  EXPECT_EQ(out[0], 0u);
+  EXPECT_EQ(out[1], 2u);
+
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, SetInfoFromInterfaceRoundTripsLabels) {
+  const std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> labels = {0.25f, 0.75f};
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_mat(data.data(), 2, 2, -1.0f);
+  ASSERT_NE(h, nullptr);
+  const std::string label_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(labels.data()), "<f4", {2});
+  ASSERT_EQ(xgb_dmatrix_set_info_from_interface(h, "label",
+                                                label_ai.c_str()),
+            0)
+      << "last error: " << xgb_last_error();
+
+  std::uint64_t len = 0;
+  const float* out = nullptr;
+  ASSERT_EQ(xgb_dmatrix_get_float_info(h, "label", &len, &out), 0);
+  ASSERT_EQ(len, 2u);
+  EXPECT_FLOAT_EQ(out[0], 0.25f);
+  EXPECT_FLOAT_EQ(out[1], 0.75f);
+
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, SliceRows) {
+  const std::vector<float> data = {
+      1.0f, 2.0f,
+      3.0f, 4.0f,
+      5.0f, 6.0f,
+  };
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_mat(data.data(), 3, 2, -1.0f);
+  ASSERT_NE(h, nullptr);
+  const std::vector<std::int32_t> idx = {2, 0};
+  xgb_dmatrix_t sliced = xgb_dmatrix_slice(h, idx.data(), idx.size(), 0);
+  ASSERT_NE(sliced, nullptr) << "last error: " << xgb_last_error();
+
+  std::uint64_t nrow = 0;
+  std::uint64_t ncol = 0;
+  ASSERT_EQ(xgb_dmatrix_num_row(sliced, &nrow), 0);
+  ASSERT_EQ(xgb_dmatrix_num_col(sliced, &ncol), 0);
+  EXPECT_EQ(nrow, 2u);
+  EXPECT_EQ(ncol, 2u);
+
+  std::uint64_t nnz = 0;
+  ASSERT_EQ(xgb_dmatrix_num_non_missing(sliced, &nnz), 0);
+  std::vector<std::uint64_t> indptr(nrow + 1, 0);
+  std::vector<std::uint32_t> indices(nnz, 0);
+  std::vector<float> out_data(nnz, 0.0f);
+  ASSERT_EQ(xgb_dmatrix_get_data_as_csr(sliced, "{}", indptr.data(),
+                                        indices.data(), out_data.data()),
+            0);
+  ASSERT_EQ(out_data.size(), 4u);
+  EXPECT_FLOAT_EQ(out_data[0], 5.0f);
+  EXPECT_FLOAT_EQ(out_data[1], 6.0f);
+  EXPECT_FLOAT_EQ(out_data[2], 1.0f);
+  EXPECT_FLOAT_EQ(out_data[3], 2.0f);
+
+  xgb_dmatrix_free(sliced);
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, SaveBinaryAndReload) {
+  const std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_mat(data.data(), 2, 2, -1.0f);
+  ASSERT_NE(h, nullptr);
+  const std::string path = ::testing::TempDir() + "xgbcompat_dmatrix.buffer";
+  ASSERT_EQ(xgb_dmatrix_save_binary(h, path.c_str(), 1), 0)
+      << "last error: " << xgb_last_error();
+
+  const std::string config = "{\"uri\":\"" + path + "\",\"silent\":1}";
+  xgb_dmatrix_t loaded = xgb_dmatrix_create_from_uri(config.c_str());
+  ASSERT_NE(loaded, nullptr) << "last error: " << xgb_last_error();
+  std::uint64_t nrow = 0;
+  std::uint64_t ncol = 0;
+  EXPECT_EQ(xgb_dmatrix_num_row(loaded, &nrow), 0);
+  EXPECT_EQ(xgb_dmatrix_num_col(loaded, &ncol), 0);
+  EXPECT_EQ(nrow, 2u);
+  EXPECT_EQ(ncol, 2u);
+
+  xgb_dmatrix_free(loaded);
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, QuantileCutReturnsArrayInterfaces) {
+  const std::vector<float> data = {
+      1.0f, 2.0f,
+      3.0f, 4.0f,
+      5.0f, 6.0f,
+  };
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_mat(data.data(), 3, 2, -1.0f);
+  ASSERT_NE(h, nullptr);
+  const std::vector<float> labels = {1.0f, 3.0f, 5.0f};
+  ASSERT_EQ(xgb_dmatrix_set_float_info(h, "label", labels.data(),
+                                       labels.size()),
+            0);
+
+  const xgb_dmatrix_t cache[] = {h};
+  xgb_booster_t b = xgb_booster_create(cache, 1);
+  ASSERT_NE(b, nullptr) << "last error: " << xgb_last_error();
+  ASSERT_EQ(xgb_booster_set_param(b, "objective", "reg:squarederror"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "tree_method", "hist"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "max_depth", "2"), 0);
+  ASSERT_EQ(xgb_booster_set_param(b, "verbosity", "0"), 0);
+  ASSERT_EQ(xgb_booster_update_one_iter(b, 0, h), 0)
+      << "last error: " << xgb_last_error();
+
+  std::uint64_t indptr_len = 0;
+  std::uint64_t data_len = 0;
+  ASSERT_EQ(xgb_dmatrix_get_quantile_cut(h, "{}", 0, nullptr, &indptr_len,
+                                         0, nullptr, &data_len),
+            2)
+      << "last error: " << xgb_last_error();
+  ASSERT_GT(indptr_len, 0u);
+  ASSERT_GT(data_len, 0u);
+  std::vector<char> indptr(indptr_len, '\0');
+  std::vector<char> cuts(data_len, '\0');
+  ASSERT_EQ(xgb_dmatrix_get_quantile_cut(h, "{}", indptr.size(),
+                                         indptr.data(), &indptr_len,
+                                         cuts.size(), cuts.data(), &data_len),
+            0)
+      << "last error: " << xgb_last_error();
+  EXPECT_NE(std::string(indptr.data(), indptr_len).find("\"shape\""),
+            std::string::npos);
+  EXPECT_NE(std::string(cuts.data(), data_len).find("\"shape\""),
+            std::string::npos);
+
+  xgb_booster_free(b);
+  xgb_dmatrix_free(h);
+}
+
 // ---------------------------------------------------------------------------
 // Booster tests
 // ---------------------------------------------------------------------------
