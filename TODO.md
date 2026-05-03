@@ -15,7 +15,7 @@
 - [x] Accept labels/weights as lists, vectors, or `f32vector`s.
 - [x] Coerce training parameter keys and values before calling the FFI layer.
 - [x] Wrap high-level DMatrix and Booster values in Racket structs for lifetime tracking.
-- [ ] Add Scribble docs once the API shape settles.
+- [x] Add Scribble docs once the API shape settles.
 
 ## Phase 3: Missing C API Coverage
 
