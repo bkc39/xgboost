@@ -16,6 +16,11 @@ XGBoost handles behind opaque Racket values.
 For lower-level access, use @racketmodname[xgboost/ffi]. For direct C FFI
 bindings, use @racketmodname[xgboost/ffi/raw].
 
+The @racketmodname[xgboost/ffi] module also exposes lower-level DMatrix
+constructors for URI loading, dense array-interface input, CSR, CSC, and
+columnar array-interface input. These are intended for callers that already
+work with native-style buffers or XGBoost JSON array-interface strings.
+
 @section{Example}
 
 @racketblock[

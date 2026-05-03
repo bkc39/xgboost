@@ -68,6 +68,30 @@ xgb_dmatrix_t xgb_dmatrix_create_from_mat(const float* data,
                                           size_t ncol,
                                           float missing);
 
+/* Create a DMatrix from a URI config JSON string.  The config is passed
+ * directly to XGDMatrixCreateFromURI, e.g.
+ *   {"uri":"/path/to/data.libsvm?format=libsvm","silent":true} */
+xgb_dmatrix_t xgb_dmatrix_create_from_uri(const char* config);
+
+/* Create DMatrices from XGBoost's JSON encoded array-interface inputs.
+ * These wrappers return NULL on failure; call xgb_last_error() for details.
+ * The C API copies inputs during construction, so the JSON strings and
+ * referenced buffers only need to stay valid for the duration of the call. */
+xgb_dmatrix_t xgb_dmatrix_create_from_dense(const char* data,
+                                            const char* config);
+xgb_dmatrix_t xgb_dmatrix_create_from_csr(const char* indptr,
+                                          const char* indices,
+                                          const char* data,
+                                          uint64_t ncol,
+                                          const char* config);
+xgb_dmatrix_t xgb_dmatrix_create_from_csc(const char* indptr,
+                                          const char* indices,
+                                          const char* data,
+                                          uint64_t nrow,
+                                          const char* config);
+xgb_dmatrix_t xgb_dmatrix_create_from_columnar(const char* data,
+                                               const char* config);
+
 /* Release a DMatrix.  Safe to call on NULL. */
 void xgb_dmatrix_free(xgb_dmatrix_t handle);
 

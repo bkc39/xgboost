@@ -20,6 +20,11 @@
          DMatrix?
          xgb-dmatrix-free/raw
          xgb-dmatrix-create-from-mat/raw
+         xgb-dmatrix-create-from-uri/raw
+         xgb-dmatrix-create-from-dense/raw
+         xgb-dmatrix-create-from-csr/raw
+         xgb-dmatrix-create-from-csc/raw
+         xgb-dmatrix-create-from-columnar/raw
          xgb-dmatrix-set-float-info/raw
          xgb-dmatrix-num-row/raw
          xgb-dmatrix-num-col/raw
@@ -113,6 +118,41 @@
         (missing : _float)
         -> _DMatrix/null)
   #:c-id xgb_dmatrix_create_from_mat
+  #:wrap (allocator xgb-dmatrix-free/raw))
+
+(define-xgb xgb-dmatrix-create-from-uri/raw
+  (_fun _string/utf-8 -> _DMatrix/null)
+  #:c-id xgb_dmatrix_create_from_uri
+  #:wrap (allocator xgb-dmatrix-free/raw))
+
+(define-xgb xgb-dmatrix-create-from-dense/raw
+  (_fun _string/utf-8 _string/utf-8 -> _DMatrix/null)
+  #:c-id xgb_dmatrix_create_from_dense
+  #:wrap (allocator xgb-dmatrix-free/raw))
+
+(define-xgb xgb-dmatrix-create-from-csr/raw
+  (_fun _string/utf-8
+        _string/utf-8
+        _string/utf-8
+        _uint64
+        _string/utf-8
+        -> _DMatrix/null)
+  #:c-id xgb_dmatrix_create_from_csr
+  #:wrap (allocator xgb-dmatrix-free/raw))
+
+(define-xgb xgb-dmatrix-create-from-csc/raw
+  (_fun _string/utf-8
+        _string/utf-8
+        _string/utf-8
+        _uint64
+        _string/utf-8
+        -> _DMatrix/null)
+  #:c-id xgb_dmatrix_create_from_csc
+  #:wrap (allocator xgb-dmatrix-free/raw))
+
+(define-xgb xgb-dmatrix-create-from-columnar/raw
+  (_fun _string/utf-8 _string/utf-8 -> _DMatrix/null)
+  #:c-id xgb_dmatrix_create_from_columnar
   #:wrap (allocator xgb-dmatrix-free/raw))
 
 (define-xgb xgb-dmatrix-set-float-info/raw

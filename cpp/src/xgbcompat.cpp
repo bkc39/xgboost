@@ -191,6 +191,130 @@ xgb_dmatrix_t xgb_dmatrix_create_from_mat(const float* data,
   }
 }
 
+xgb_dmatrix_t xgb_dmatrix_create_from_uri(const char* config) {
+  if (!config) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_uri: config is null";
+    return nullptr;
+  }
+  DMatrixHandle handle = nullptr;
+  try {
+    xgbcompat::check(XGDMatrixCreateFromURI(config, &handle),
+                     "XGDMatrixCreateFromURI");
+    return static_cast<xgb_dmatrix_t>(handle);
+  } catch (const std::exception&) {
+    if (handle) XGDMatrixFree(handle);
+    return nullptr;
+  } catch (...) {
+    if (handle) XGDMatrixFree(handle);
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_uri: unknown exception";
+    return nullptr;
+  }
+}
+
+xgb_dmatrix_t xgb_dmatrix_create_from_dense(const char* data,
+                                            const char* config) {
+  if (!data || !config) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_dense: invalid argument";
+    return nullptr;
+  }
+  DMatrixHandle handle = nullptr;
+  try {
+    xgbcompat::check(XGDMatrixCreateFromDense(data, config, &handle),
+                     "XGDMatrixCreateFromDense");
+    return static_cast<xgb_dmatrix_t>(handle);
+  } catch (const std::exception&) {
+    if (handle) XGDMatrixFree(handle);
+    return nullptr;
+  } catch (...) {
+    if (handle) XGDMatrixFree(handle);
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_dense: unknown exception";
+    return nullptr;
+  }
+}
+
+xgb_dmatrix_t xgb_dmatrix_create_from_csr(const char* indptr,
+                                          const char* indices,
+                                          const char* data,
+                                          uint64_t ncol,
+                                          const char* config) {
+  if (!indptr || !indices || !data || !config) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_csr: invalid argument";
+    return nullptr;
+  }
+  DMatrixHandle handle = nullptr;
+  try {
+    xgbcompat::check(
+        XGDMatrixCreateFromCSR(indptr, indices, data,
+                               static_cast<bst_ulong>(ncol), config, &handle),
+        "XGDMatrixCreateFromCSR");
+    return static_cast<xgb_dmatrix_t>(handle);
+  } catch (const std::exception&) {
+    if (handle) XGDMatrixFree(handle);
+    return nullptr;
+  } catch (...) {
+    if (handle) XGDMatrixFree(handle);
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_csr: unknown exception";
+    return nullptr;
+  }
+}
+
+xgb_dmatrix_t xgb_dmatrix_create_from_csc(const char* indptr,
+                                          const char* indices,
+                                          const char* data,
+                                          uint64_t nrow,
+                                          const char* config) {
+  if (!indptr || !indices || !data || !config) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_csc: invalid argument";
+    return nullptr;
+  }
+  DMatrixHandle handle = nullptr;
+  try {
+    xgbcompat::check(
+        XGDMatrixCreateFromCSC(indptr, indices, data,
+                               static_cast<bst_ulong>(nrow), config, &handle),
+        "XGDMatrixCreateFromCSC");
+    return static_cast<xgb_dmatrix_t>(handle);
+  } catch (const std::exception&) {
+    if (handle) XGDMatrixFree(handle);
+    return nullptr;
+  } catch (...) {
+    if (handle) XGDMatrixFree(handle);
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_csc: unknown exception";
+    return nullptr;
+  }
+}
+
+xgb_dmatrix_t xgb_dmatrix_create_from_columnar(const char* data,
+                                               const char* config) {
+  if (!data || !config) {
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_columnar: invalid argument";
+    return nullptr;
+  }
+  DMatrixHandle handle = nullptr;
+  try {
+    xgbcompat::check(XGDMatrixCreateFromColumnar(data, config, &handle),
+                     "XGDMatrixCreateFromColumnar");
+    return static_cast<xgb_dmatrix_t>(handle);
+  } catch (const std::exception&) {
+    if (handle) XGDMatrixFree(handle);
+    return nullptr;
+  } catch (...) {
+    if (handle) XGDMatrixFree(handle);
+    xgbcompat::g_last_error =
+        "xgb_dmatrix_create_from_columnar: unknown exception";
+    return nullptr;
+  }
+}
+
 void xgb_dmatrix_free(xgb_dmatrix_t handle) {
   if (handle) {
     // XGDMatrixFree returns an rc, but we have nowhere to surface it on a

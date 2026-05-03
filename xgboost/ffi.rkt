@@ -3,6 +3,7 @@
 (require (except-in ffi/unsafe ->)
          ffi/vector
          racket/contract
+         racket/list
          racket/string
          "ffi/raw.rkt")
 
@@ -18,6 +19,35 @@
   [dmatrix? (-> any/c boolean?)]
   [dmatrix-create-from-mat
    (->* (f32vector? exact-nonnegative-integer? exact-nonnegative-integer?)
+        (real?)
+        dmatrix?)]
+  [dmatrix-create-from-uri (-> string? dmatrix?)]
+  [dmatrix-create-from-dense-array-interface
+   (->* (string?) (string?) dmatrix?)]
+  [dmatrix-create-from-csr-array-interface
+   (->* (string? string? string? exact-nonnegative-integer?)
+        (string?)
+        dmatrix?)]
+  [dmatrix-create-from-csc-array-interface
+   (->* (string? string? string? exact-nonnegative-integer?)
+        (string?)
+        dmatrix?)]
+  [dmatrix-create-from-columnar-array-interface
+   (->* (string?) (string?) dmatrix?)]
+  [dmatrix-create-from-dense
+   (->* (f32vector? exact-positive-integer? exact-positive-integer?)
+        (real?)
+        dmatrix?)]
+  [dmatrix-create-from-csr
+   (->* (u64vector? u32vector? f32vector? exact-positive-integer?)
+        (real?)
+        dmatrix?)]
+  [dmatrix-create-from-csc
+   (->* (u64vector? u32vector? f32vector? exact-positive-integer?)
+        (real?)
+        dmatrix?)]
+  [dmatrix-create-from-columnar
+   (->* ((listof f32vector?))
         (real?)
         dmatrix?)]
   [dmatrix-set-float-info! (-> dmatrix? string? f32vector? void?)]
@@ -126,6 +156,128 @@
            "XGBoost returned NULL handle: ~a"
            (xgb-last-error/raw)))
   h)
+
+(define (check-handle who h)
+  (unless h
+    (error who "XGBoost returned NULL handle: ~a" (xgb-last-error/raw)))
+  h)
+
+(define (dmatrix-create-from-uri config)
+  (check-handle 'dmatrix-create-from-uri
+                (xgb-dmatrix-create-from-uri/raw config)))
+
+(define (dmatrix-create-from-dense-array-interface data-json [config "{\"missing\":NaN}"])
+  (check-handle 'dmatrix-create-from-dense-array-interface
+                (xgb-dmatrix-create-from-dense/raw data-json config)))
+
+(define (dmatrix-create-from-csr-array-interface indptr-json indices-json data-json ncol
+                                                 [config "{\"missing\":NaN}"])
+  (check-handle 'dmatrix-create-from-csr-array-interface
+                (xgb-dmatrix-create-from-csr/raw indptr-json indices-json
+                                                 data-json ncol config)))
+
+(define (dmatrix-create-from-csc-array-interface indptr-json indices-json data-json nrow
+                                                 [config "{\"missing\":NaN}"])
+  (check-handle 'dmatrix-create-from-csc-array-interface
+                (xgb-dmatrix-create-from-csc/raw indptr-json indices-json
+                                                 data-json nrow config)))
+
+(define (dmatrix-create-from-columnar-array-interface data-json [config "{\"missing\":NaN}"])
+  (check-handle 'dmatrix-create-from-columnar-array-interface
+                (xgb-dmatrix-create-from-columnar/raw data-json config)))
+
+(define (json-number v)
+  (cond
+    [(not (= v v)) "NaN"]
+    [(eqv? v +inf.0) "Infinity"]
+    [(eqv? v -inf.0) "-Infinity"]
+    [else (number->string v)]))
+
+(define (missing-config missing)
+  (format "{\"missing\":~a}" (json-number missing)))
+
+(define (dims->json dims)
+  (string-join (map number->string dims) ","))
+
+(define (array-interface-json ptr typestr dims)
+  (format "{\"data\":[~a,false],\"typestr\":\"~a\",\"shape\":[~a],\"version\":3}"
+          (cast ptr _pointer _uintptr)
+          typestr
+          (dims->json dims)))
+
+(define (f32-array-interface vec dims)
+  (array-interface-json (f32vector->cpointer vec) "<f4" dims))
+
+(define (u64-array-interface vec)
+  (array-interface-json (u64vector->cpointer vec) "<u8"
+                        (list (u64vector-length vec))))
+
+(define (u32-array-interface vec)
+  (array-interface-json (u32vector->cpointer vec) "<u4"
+                        (list (u32vector-length vec))))
+
+(define (dmatrix-create-from-dense data nrow ncol [missing +nan.0])
+  (unless (= (f32vector-length data) (* nrow ncol))
+    (raise-argument-error 'dmatrix-create-from-dense
+                          (format "f32vector of length ~a (nrow*ncol)"
+                                  (* nrow ncol))
+                          data))
+  (dmatrix-create-from-dense-array-interface
+   (f32-array-interface data (list nrow ncol))
+   (missing-config missing)))
+
+(define (dmatrix-create-from-csr indptr indices data ncol [missing +nan.0])
+  (unless (= (u32vector-length indices) (f32vector-length data))
+    (error 'dmatrix-create-from-csr
+           "indices length ~a does not match data length ~a"
+           (u32vector-length indices)
+           (f32vector-length data)))
+  (unless (= (u64vector-ref indptr (sub1 (u64vector-length indptr)))
+             (f32vector-length data))
+    (error 'dmatrix-create-from-csr
+           "final indptr value must equal data length"))
+  (dmatrix-create-from-csr-array-interface
+   (u64-array-interface indptr)
+   (u32-array-interface indices)
+   (f32-array-interface data (list (f32vector-length data)))
+   ncol
+   (missing-config missing)))
+
+(define (dmatrix-create-from-csc indptr indices data nrow [missing +nan.0])
+  (unless (= (u32vector-length indices) (f32vector-length data))
+    (error 'dmatrix-create-from-csc
+           "indices length ~a does not match data length ~a"
+           (u32vector-length indices)
+           (f32vector-length data)))
+  (unless (= (u64vector-ref indptr (sub1 (u64vector-length indptr)))
+             (f32vector-length data))
+    (error 'dmatrix-create-from-csc
+           "final indptr value must equal data length"))
+  (dmatrix-create-from-csc-array-interface
+   (u64-array-interface indptr)
+   (u32-array-interface indices)
+   (f32-array-interface data (list (f32vector-length data)))
+   nrow
+   (missing-config missing)))
+
+(define (dmatrix-create-from-columnar columns [missing +nan.0])
+  (when (null? columns)
+    (raise-argument-error 'dmatrix-create-from-columnar
+                          "non-empty list of f32vectors"
+                          columns))
+  (define nrow (f32vector-length (car columns)))
+  (for ([col (in-list columns)])
+    (unless (= (f32vector-length col) nrow)
+      (error 'dmatrix-create-from-columnar
+             "all columns must have the same length")))
+  (define data-json
+    (format "[~a]"
+            (string-join
+             (for/list ([col (in-list columns)])
+               (f32-array-interface col (list nrow)))
+             ",")))
+  (dmatrix-create-from-columnar-array-interface data-json
+                                                (missing-config missing)))
 
 (define (dmatrix-set-float-info! h field vals)
   (check-ok (xgb-dmatrix-set-float-info/raw h field vals)
@@ -472,6 +624,82 @@
     (define dm (dmatrix-create-from-mat (make-data) 2 3))
     (check-pred dmatrix? dm)
     (dmatrix-free! dm))
+
+  (test-case "dmatrix-create-from-dense array interface"
+    (define dm (dmatrix-create-from-dense (make-data) 2 3 -1.0))
+    (check-equal? (dmatrix-nrow dm) 2)
+    (check-equal? (dmatrix-ncol dm) 3)
+    (check-equal? (dmatrix->list dm)
+                  '((1.0 2.0 3.0) (4.0 5.0 6.0)))
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-create-from-csr array interfaces"
+    (define dm
+      (dmatrix-create-from-csr
+       (u64vector 0 2 4)
+       (u32vector 0 2 1 2)
+       (f32vector 1.0 3.0 5.0 6.0)
+       3
+       -1.0))
+    (check-equal? (dmatrix-nrow dm) 2)
+    (check-equal? (dmatrix-ncol dm) 3)
+    (define rows (dmatrix->list dm))
+    (check-= (first (first rows)) 1.0 1e-6)
+    (check-true (not (= (second (first rows)) (second (first rows)))))
+    (check-= (third (first rows)) 3.0 1e-6)
+    (check-= (second (second rows)) 5.0 1e-6)
+    (check-= (third (second rows)) 6.0 1e-6)
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-create-from-csc array interfaces"
+    (define dm
+      (dmatrix-create-from-csc
+       (u64vector 0 1 2 4)
+       (u32vector 0 1 0 1)
+       (f32vector 1.0 5.0 3.0 6.0)
+       2
+       -1.0))
+    (check-equal? (dmatrix-nrow dm) 2)
+    (check-equal? (dmatrix-ncol dm) 3)
+    (define rows (dmatrix->list dm))
+    (check-= (first (first rows)) 1.0 1e-6)
+    (check-true (not (= (second (first rows)) (second (first rows)))))
+    (check-= (third (first rows)) 3.0 1e-6)
+    (check-= (second (second rows)) 5.0 1e-6)
+    (check-= (third (second rows)) 6.0 1e-6)
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-create-from-columnar array interfaces"
+    (define dm
+      (dmatrix-create-from-columnar
+       (list (f32vector 1.0 4.0)
+             (f32vector 2.0 5.0)
+             (f32vector 3.0 6.0))
+       -1.0))
+    (check-equal? (dmatrix-nrow dm) 2)
+    (check-equal? (dmatrix-ncol dm) 3)
+    (check-equal? (dmatrix->list dm)
+                  '((1.0 2.0 3.0) (4.0 5.0 6.0)))
+    (dmatrix-free! dm))
+
+  (test-case "dmatrix-create-from-uri loads libsvm"
+    (define tmp (make-temporary-file "xgboost-uri-~a.libsvm"))
+    (dynamic-wind
+      void
+      (lambda ()
+        (call-with-output-file tmp
+          (lambda (out)
+            (displayln "0 1:1 3:3" out)
+            (displayln "1 2:5 3:6" out))
+          #:exists 'truncate)
+        (define dm
+          (dmatrix-create-from-uri
+           (format "{\"uri\":\"~a?format=libsvm\",\"silent\":1}"
+                   (path->string tmp))))
+        (check-equal? (dmatrix-nrow dm) 2)
+        (check-equal? (dmatrix-ncol dm) 4)
+        (dmatrix-free! dm))
+      (lambda () (when (file-exists? tmp) (delete-file tmp)))))
 
   (test-case "dmatrix finalizer path: drop reference, collect-garbage"
     (let loop ([i 0])

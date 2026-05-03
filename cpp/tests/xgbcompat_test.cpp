@@ -6,9 +6,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
+#include <fstream>
 #include <numeric>
 #include <regex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -135,6 +138,128 @@ TEST(XgbDMatrixTest, CreateFromNullDataReturnsNull) {
   xgb_dmatrix_t h = xgb_dmatrix_create_from_mat(nullptr, 4, 3, -1.0f);
   EXPECT_EQ(h, nullptr);
   EXPECT_FALSE(std::string(xgb_last_error()).empty());
+}
+
+std::string array_interface(std::uintptr_t ptr,
+                            const std::string& typestr,
+                            std::initializer_list<std::uint64_t> shape) {
+  std::ostringstream os;
+  os << "{\"data\":[" << ptr << ",false],\"typestr\":\"" << typestr
+     << "\",\"shape\":[";
+  bool first = true;
+  for (std::uint64_t dim : shape) {
+    if (!first) os << ",";
+    first = false;
+    os << dim;
+  }
+  os << "],\"version\":3}";
+  return os.str();
+}
+
+TEST(XgbDMatrixTest, CreateFromDenseArrayInterface) {
+  std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  const std::string ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(data.data()), "<f4", {2, 3});
+  xgb_dmatrix_t h =
+      xgb_dmatrix_create_from_dense(ai.c_str(), "{\"missing\":-1.0}");
+  ASSERT_NE(h, nullptr) << "last error: " << xgb_last_error();
+  std::uint64_t nrow = 0;
+  std::uint64_t ncol = 0;
+  EXPECT_EQ(xgb_dmatrix_num_row(h, &nrow), 0);
+  EXPECT_EQ(xgb_dmatrix_num_col(h, &ncol), 0);
+  EXPECT_EQ(nrow, 2u);
+  EXPECT_EQ(ncol, 3u);
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, CreateFromCSRArrayInterfaces) {
+  std::vector<std::uint64_t> indptr = {0, 2, 4};
+  std::vector<std::uint32_t> indices = {0, 2, 1, 2};
+  std::vector<float> data = {1.0f, 3.0f, 5.0f, 6.0f};
+  const std::string indptr_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(indptr.data()), "<u8", {3});
+  const std::string indices_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(indices.data()), "<u4", {4});
+  const std::string data_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(data.data()), "<f4", {4});
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_csr(
+      indptr_ai.c_str(), indices_ai.c_str(), data_ai.c_str(), 3,
+      "{\"missing\":-1.0}");
+  ASSERT_NE(h, nullptr) << "last error: " << xgb_last_error();
+  std::uint64_t nrow = 0;
+  std::uint64_t ncol = 0;
+  EXPECT_EQ(xgb_dmatrix_num_row(h, &nrow), 0);
+  EXPECT_EQ(xgb_dmatrix_num_col(h, &ncol), 0);
+  EXPECT_EQ(nrow, 2u);
+  EXPECT_EQ(ncol, 3u);
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, CreateFromCSCArrayInterfaces) {
+  std::vector<std::uint64_t> indptr = {0, 1, 2, 4};
+  std::vector<std::uint32_t> indices = {0, 1, 0, 1};
+  std::vector<float> data = {1.0f, 5.0f, 3.0f, 6.0f};
+  const std::string indptr_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(indptr.data()), "<u8", {4});
+  const std::string indices_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(indices.data()), "<u4", {4});
+  const std::string data_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(data.data()), "<f4", {4});
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_csc(
+      indptr_ai.c_str(), indices_ai.c_str(), data_ai.c_str(), 2,
+      "{\"missing\":-1.0}");
+  ASSERT_NE(h, nullptr) << "last error: " << xgb_last_error();
+  std::uint64_t nrow = 0;
+  std::uint64_t ncol = 0;
+  EXPECT_EQ(xgb_dmatrix_num_row(h, &nrow), 0);
+  EXPECT_EQ(xgb_dmatrix_num_col(h, &ncol), 0);
+  EXPECT_EQ(nrow, 2u);
+  EXPECT_EQ(ncol, 3u);
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, CreateFromColumnarArrayInterfaces) {
+  std::vector<float> col0 = {1.0f, 4.0f};
+  std::vector<float> col1 = {2.0f, 5.0f};
+  std::vector<float> col2 = {3.0f, 6.0f};
+  const std::string col0_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(col0.data()), "<f4", {2});
+  const std::string col1_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(col1.data()), "<f4", {2});
+  const std::string col2_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(col2.data()), "<f4", {2});
+  const std::string data = "[" + col0_ai + "," + col1_ai + "," + col2_ai + "]";
+  xgb_dmatrix_t h =
+      xgb_dmatrix_create_from_columnar(data.c_str(), "{\"missing\":-1.0}");
+  ASSERT_NE(h, nullptr) << "last error: " << xgb_last_error();
+  std::uint64_t nrow = 0;
+  std::uint64_t ncol = 0;
+  EXPECT_EQ(xgb_dmatrix_num_row(h, &nrow), 0);
+  EXPECT_EQ(xgb_dmatrix_num_col(h, &ncol), 0);
+  EXPECT_EQ(nrow, 2u);
+  EXPECT_EQ(ncol, 3u);
+  xgb_dmatrix_free(h);
+}
+
+TEST(XgbDMatrixTest, CreateFromUriLibsvm) {
+  const std::string path = "xgbcompat-libsvm-test.txt";
+  {
+    std::ofstream out(path);
+    out << "0 1:1 3:3\n";
+    out << "1 2:5 3:6\n";
+  }
+  const std::string config =
+      "{\"uri\":\"" + path + "?format=libsvm\",\"silent\":1}";
+  xgb_dmatrix_t h = xgb_dmatrix_create_from_uri(config.c_str());
+  ASSERT_NE(h, nullptr) << "last error: " << xgb_last_error();
+  std::uint64_t nrow = 0;
+  std::uint64_t ncol = 0;
+  EXPECT_EQ(xgb_dmatrix_num_row(h, &nrow), 0);
+  EXPECT_EQ(xgb_dmatrix_num_col(h, &ncol), 0);
+  EXPECT_EQ(nrow, 2u);
+  EXPECT_EQ(ncol, 4u);
+  xgb_dmatrix_free(h);
+  std::remove(path.c_str());
 }
 
 TEST(XgbDMatrixTest, SetFloatInfoSuccess) {
