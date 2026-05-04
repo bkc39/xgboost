@@ -76,13 +76,16 @@ Snapshot serialization remains tracked separately.
 Goal: support serving-style prediction without forcing users to build a
 DMatrix first.
 
+Status: implemented for CPU dense, CSR, and columnar inputs.
+
 - Dense CPU array-interface prediction.
 - CSR CPU array-interface prediction.
 - Columnar CPU array-interface prediction.
 - Shared prediction-shape handling where useful.
 - Examples:
-  - dense inplace prediction equals DMatrix prediction
-  - CSR and columnar variants on small data
+  - `examples/20-inplace-predict-dense.rkt`
+  - `examples/21-inplace-predict-csr.rkt`
+  - `examples/22-inplace-predict-columnar.rkt`
 
 ## Phase 4: Callback-Based Local Extensions
 

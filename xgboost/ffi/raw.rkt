@@ -51,6 +51,9 @@
          xgb-booster-set-param/raw
          xgb-booster-update-one-iter/raw
          xgb-booster-predict/raw
+         xgb-booster-predict-from-dense/raw
+         xgb-booster-predict-from-csr/raw
+         xgb-booster-predict-from-columnar/raw
          xgb-booster-save-model/raw
          xgb-booster-load-model/raw
          xgb-booster-save-model-to-buffer/raw
@@ -362,6 +365,45 @@
         -> (rc : _int)
         -> (values rc out-len))
   #:c-id xgb_booster_predict)
+
+(define-xgb xgb-booster-predict-from-dense/raw
+  (_fun _Booster
+        _string/utf-8
+        _string/utf-8
+        _DMatrix/null
+        (capacity : _uint64)
+        (buf : _f32vector)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_predict_from_dense)
+
+(define-xgb xgb-booster-predict-from-csr/raw
+  (_fun _Booster
+        _string/utf-8
+        _string/utf-8
+        _string/utf-8
+        _uint64
+        _string/utf-8
+        _DMatrix/null
+        (capacity : _uint64)
+        (buf : _f32vector)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_predict_from_csr)
+
+(define-xgb xgb-booster-predict-from-columnar/raw
+  (_fun _Booster
+        _string/utf-8
+        _string/utf-8
+        _DMatrix/null
+        (capacity : _uint64)
+        (buf : _f32vector)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_predict_from_columnar)
 
 ;; Save/load model to/from a filesystem path.  XGBoost picks the format
 ;; from the extension (.json or .ubj recommended).

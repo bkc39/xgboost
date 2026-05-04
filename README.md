@@ -56,7 +56,10 @@ raco test examples/11-global-apis.rkt \
   examples/16-quantile-cuts.rkt \
   examples/17-booster-lifecycle-config.rkt \
   examples/18-booster-attrs.rkt \
-  examples/19-booster-dumps-feature-scores.rkt
+  examples/19-booster-dumps-feature-scores.rkt \
+  examples/20-inplace-predict-dense.rkt \
+  examples/21-inplace-predict-csr.rkt \
+  examples/22-inplace-predict-columnar.rkt
 
 # run a narrative example manually
 racket examples/01-train-regression.rkt

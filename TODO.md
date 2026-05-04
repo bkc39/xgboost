@@ -26,7 +26,8 @@
 - [x] Booster serialization/config/inspection: save/load config, dumps, attrs, feature scores.
 - [ ] Booster snapshots.
 - [ ] Custom objective training.
-- [ ] Inplace prediction APIs, including CUDA array and columnar variants.
+- [x] CPU inplace prediction APIs: dense, CSR, and columnar.
+- [ ] CUDA inplace prediction APIs: CUDA array and columnar variants.
 - [ ] Distributed tracker and communicator APIs. Deferred until the local API implementation is robust.
 
 ## Phase 4: CUDA And Linux Validation

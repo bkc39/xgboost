@@ -269,6 +269,34 @@ int xgb_booster_predict(xgb_booster_t handle,
                         float* out_buffer,
                         uint64_t* out_len);
 
+/* CPU inplace prediction from array-interface inputs.  These mirror
+ * `xgb_booster_predict`: XGBoost-owned prediction memory is copied into
+ * caller-owned buffers, and rc=2 reports the required float count. */
+int xgb_booster_predict_from_dense(xgb_booster_t handle,
+                                   const char* values,
+                                   const char* config,
+                                   xgb_dmatrix_t proxy,
+                                   uint64_t buffer_capacity,
+                                   float* out_buffer,
+                                   uint64_t* out_len);
+int xgb_booster_predict_from_csr(xgb_booster_t handle,
+                                 const char* indptr,
+                                 const char* indices,
+                                 const char* values,
+                                 uint64_t ncol,
+                                 const char* config,
+                                 xgb_dmatrix_t proxy,
+                                 uint64_t buffer_capacity,
+                                 float* out_buffer,
+                                 uint64_t* out_len);
+int xgb_booster_predict_from_columnar(xgb_booster_t handle,
+                                      const char* values,
+                                      const char* config,
+                                      xgb_dmatrix_t proxy,
+                                      uint64_t buffer_capacity,
+                                      float* out_buffer,
+                                      uint64_t* out_len);
+
 /* Save the booster to a file.  XGBoost picks the format from the extension:
  * `.json` and `.ubj` are the supported portable formats. */
 int xgb_booster_save_model(xgb_booster_t handle, const char* path);

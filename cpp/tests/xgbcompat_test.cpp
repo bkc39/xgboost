@@ -566,6 +566,11 @@ constexpr const char* kPredictConfig =
     "\"iteration_begin\":0,\"iteration_end\":0,"
     "\"strict_shape\":false}";
 
+constexpr const char* kInplacePredictConfig =
+    "{\"type\":0,\"training\":false,"
+    "\"iteration_begin\":0,\"iteration_end\":0,"
+    "\"strict_shape\":false,\"missing\":-1.0}";
+
 RegressionFixture make_regression_fixture() {
   return {
       /*features=*/{
@@ -587,6 +592,17 @@ xgb_dmatrix_t make_train_matrix(const RegressionFixture& f) {
                                f.labels.size());
   }
   return dtrain;
+}
+
+std::vector<float> predict_with_dmatrix(xgb_booster_t booster,
+                                        xgb_dmatrix_t dmat,
+                                        std::size_t nrow) {
+  std::vector<float> preds(nrow, 0.0f);
+  std::uint64_t len = 0;
+  xgb_booster_predict(booster, dmat, kPredictConfig, preds.size(),
+                      preds.data(), &len);
+  preds.resize(len);
+  return preds;
 }
 
 // Train a small regressor for serialization and inspection tests.  Returns
@@ -760,6 +776,106 @@ TEST(XgbBoosterTest, PredictTwiceProducesIdenticalResults) {
 
   xgb_booster_free(b);
   xgb_dmatrix_free(dtrain);
+}
+
+TEST(XgbBoosterTest, PredictFromDenseMatchesDMatrix) {
+  TrainedModel m = train_small_regressor(12);
+  ASSERT_NE(m.booster, nullptr);
+  ASSERT_NE(m.dtrain, nullptr);
+  const auto f = make_regression_fixture();
+  const std::string data_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(f.features.data()), "<f4",
+      {f.nrow, f.ncol});
+
+  std::vector<float> preds(f.nrow, 0.0f);
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_predict_from_dense(
+                m.booster, data_ai.c_str(), kInplacePredictConfig, nullptr,
+                preds.size(), preds.data(), &len),
+            0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(len, f.nrow);
+  for (std::size_t i = 0; i < f.nrow; ++i) {
+    EXPECT_FLOAT_EQ(preds[i], m.baseline_predictions[i]) << "i=" << i;
+  }
+
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterTest, PredictFromCSRMatchesDMatrix) {
+  TrainedModel m = train_small_regressor(12);
+  ASSERT_NE(m.booster, nullptr);
+  const auto f = make_regression_fixture();
+  std::vector<std::uint64_t> indptr(f.nrow + 1, 0);
+  std::vector<std::uint32_t> indices(f.nrow * f.ncol, 0);
+  for (std::size_t r = 0; r <= f.nrow; ++r) {
+    indptr[r] = r * f.ncol;
+  }
+  for (std::size_t r = 0; r < f.nrow; ++r) {
+    for (std::size_t c = 0; c < f.ncol; ++c) {
+      indices[r * f.ncol + c] = static_cast<std::uint32_t>(c);
+    }
+  }
+  const std::string indptr_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(indptr.data()), "<u8", {indptr.size()});
+  const std::string indices_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(indices.data()), "<u4", {indices.size()});
+  const std::string data_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(f.features.data()), "<f4",
+      {f.features.size()});
+
+  std::vector<float> preds(f.nrow, 0.0f);
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_predict_from_csr(
+                m.booster, indptr_ai.c_str(), indices_ai.c_str(),
+                data_ai.c_str(), f.ncol, kInplacePredictConfig, nullptr,
+                preds.size(), preds.data(), &len),
+            0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(len, f.nrow);
+  for (std::size_t i = 0; i < f.nrow; ++i) {
+    EXPECT_FLOAT_EQ(preds[i], m.baseline_predictions[i]) << "i=" << i;
+  }
+
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterTest, PredictFromColumnarMatchesDMatrix) {
+  TrainedModel m = train_small_regressor(12);
+  ASSERT_NE(m.booster, nullptr);
+  const auto f = make_regression_fixture();
+  std::vector<float> col0(f.nrow, 0.0f);
+  std::vector<float> col1(f.nrow, 0.0f);
+  std::vector<float> col2(f.nrow, 0.0f);
+  for (std::size_t r = 0; r < f.nrow; ++r) {
+    col0[r] = f.features[r * f.ncol + 0];
+    col1[r] = f.features[r * f.ncol + 1];
+    col2[r] = f.features[r * f.ncol + 2];
+  }
+  const std::string col0_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(col0.data()), "<f4", {f.nrow});
+  const std::string col1_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(col1.data()), "<f4", {f.nrow});
+  const std::string col2_ai = array_interface(
+      reinterpret_cast<std::uintptr_t>(col2.data()), "<f4", {f.nrow});
+  const std::string data = "[" + col0_ai + "," + col1_ai + "," + col2_ai + "]";
+
+  std::vector<float> preds(f.nrow, 0.0f);
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_predict_from_columnar(
+                m.booster, data.c_str(), kInplacePredictConfig, nullptr,
+                preds.size(), preds.data(), &len),
+            0)
+      << "last error: " << xgb_last_error();
+  ASSERT_EQ(len, f.nrow);
+  for (std::size_t i = 0; i < f.nrow; ++i) {
+    EXPECT_FLOAT_EQ(preds[i], m.baseline_predictions[i]) << "i=" << i;
+  }
+
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
 }
 
 TEST(XgbBoosterTest, LifecycleQueriesResetAndSlice) {

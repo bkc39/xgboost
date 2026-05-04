@@ -25,6 +25,8 @@ names/types, uint info, row slicing, binary DMatrix saving, and quantile-cut
 inspection.
 Booster inspection APIs cover lifecycle queries, JSON config round-trips,
 attributes, feature info, model dumps, and feature scores.
+CPU inplace prediction APIs support dense, CSR, and columnar array-interface
+inputs for serving-style prediction without constructing a DMatrix first.
 
 @section{Example}
 
