@@ -24,7 +24,7 @@
 - [x] DMatrix metadata: string feature info, uint info, info interface, slicing, save-binary, quantile cuts.
 - [x] Booster APIs: reset, slice, boosted rounds, number of features.
 - [x] Booster serialization/config/inspection: save/load config, dumps, attrs, feature scores.
-- [ ] Booster snapshots.
+- [x] Booster snapshots.
 - [x] Custom objective training.
 - [x] CPU inplace prediction APIs: dense, CSR, and columnar.
 - [ ] CUDA inplace prediction APIs: CUDA array and columnar variants.

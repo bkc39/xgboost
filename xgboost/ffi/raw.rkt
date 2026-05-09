@@ -59,6 +59,8 @@
          xgb-booster-load-model/raw
          xgb-booster-save-model-to-buffer/raw
          xgb-booster-load-model-from-buffer/raw
+         xgb-booster-serialize-to-buffer/raw
+         xgb-booster-unserialize-from-buffer/raw
          xgb-booster-save-json-config/raw
          xgb-booster-load-json-config/raw
          xgb-booster-set-attr/raw
@@ -442,6 +444,26 @@
         (_uint64 = (bytes-length buf))
         -> _int)
   #:c-id xgb_booster_load_model_from_buffer)
+
+;; serialize_to_buffer captures full booster state (training caches +
+;; iteration counters), so a snapshot taken mid-training can resume
+;; update_one_iter calls in a fresh booster.  Same size-then-fill contract
+;; as save_model_to_buffer.
+(define-xgb xgb-booster-serialize-to-buffer/raw
+  (_fun _Booster
+        (capacity : _uint64)
+        (buf : _bytes)
+        (out-len : (_ptr o _uint64))
+        -> (rc : _int)
+        -> (values rc out-len))
+  #:c-id xgb_booster_serialize_to_buffer)
+
+(define-xgb xgb-booster-unserialize-from-buffer/raw
+  (_fun _Booster
+        (buf : _bytes)
+        (_uint64 = (bytes-length buf))
+        -> _int)
+  #:c-id xgb_booster_unserialize_from_buffer)
 
 (define-xgb xgb-booster-save-json-config/raw
   (_fun _Booster

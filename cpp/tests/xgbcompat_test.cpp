@@ -1226,6 +1226,87 @@ TEST(XgbBoosterSerdeTest, SaveLoadBufferRoundTrip) {
   xgb_dmatrix_free(m.dtrain);
 }
 
+TEST(XgbBoosterSerdeTest, SerializeUnserializeRoundTrip) {
+  // Snapshot includes training-state caches (not just the model), so a
+  // restored booster can keep calling update_one_iter and produce the same
+  // trajectory as the original.
+  TrainedModel m = train_small_regressor(5);
+  ASSERT_NE(m.booster, nullptr);
+
+  // Size probe.
+  std::uint64_t need = 0;
+  ASSERT_EQ(xgb_booster_serialize_to_buffer(m.booster, 0, nullptr, &need), 2)
+      << "last error: " << xgb_last_error();
+  ASSERT_GT(need, 0u);
+
+  // Capacity smaller than required: still rc=2, no copy.
+  std::vector<char> small(need - 1, '\0');
+  std::uint64_t need2 = 0;
+  ASSERT_EQ(xgb_booster_serialize_to_buffer(m.booster, small.size(),
+                                            small.data(), &need2),
+            2);
+  EXPECT_EQ(need2, need);
+
+  // Resize and serialize.
+  std::vector<char> buf(need, '\0');
+  std::uint64_t got = 0;
+  ASSERT_EQ(xgb_booster_serialize_to_buffer(m.booster, buf.size(), buf.data(),
+                                            &got),
+            0);
+  ASSERT_EQ(got, need);
+
+  // Restore into a fresh booster and verify predictions match.
+  xgb_booster_t loaded = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(loaded, nullptr);
+  ASSERT_EQ(xgb_booster_unserialize_from_buffer(loaded, buf.data(),
+                                                buf.size()),
+            0)
+      << "last error: " << xgb_last_error();
+
+  std::vector<float> preds(m.baseline_predictions.size(), 0.0f);
+  std::uint64_t len = 0;
+  ASSERT_EQ(xgb_booster_predict(loaded, m.dtrain, kPredictConfig,
+                                preds.size(), preds.data(), &len),
+            0);
+  for (std::size_t i = 0; i < preds.size(); ++i) {
+    EXPECT_FLOAT_EQ(preds[i], m.baseline_predictions[i]) << "i=" << i;
+  }
+
+  // Continue training on the restored booster and on the original booster
+  // independently — the snapshot must put `loaded` in the same state, so
+  // both should produce the same updates.
+  ASSERT_EQ(xgb_booster_update_one_iter(m.booster, 5, m.dtrain), 0);
+  ASSERT_EQ(xgb_booster_update_one_iter(loaded, 5, m.dtrain), 0);
+
+  std::vector<float> orig_after(m.baseline_predictions.size(), 0.0f);
+  std::vector<float> restored_after(m.baseline_predictions.size(), 0.0f);
+  ASSERT_EQ(xgb_booster_predict(m.booster, m.dtrain, kPredictConfig,
+                                orig_after.size(), orig_after.data(), &len),
+            0);
+  ASSERT_EQ(xgb_booster_predict(loaded, m.dtrain, kPredictConfig,
+                                restored_after.size(), restored_after.data(),
+                                &len),
+            0);
+  for (std::size_t i = 0; i < orig_after.size(); ++i) {
+    EXPECT_FLOAT_EQ(orig_after[i], restored_after[i]) << "i=" << i;
+  }
+
+  xgb_booster_free(loaded);
+  xgb_booster_free(m.booster);
+  xgb_dmatrix_free(m.dtrain);
+}
+
+TEST(XgbBoosterSerdeTest, UnserializeFromGarbageBufferFails) {
+  xgb_booster_t b = xgb_booster_create(nullptr, 0);
+  ASSERT_NE(b, nullptr);
+  const std::vector<char> garbage(64, 'x');
+  EXPECT_NE(xgb_booster_unserialize_from_buffer(b, garbage.data(),
+                                                garbage.size()),
+            0);
+  EXPECT_FALSE(std::string(xgb_last_error()).empty());
+  xgb_booster_free(b);
+}
+
 // ---------------------------------------------------------------------------
 // Booster eval-one-iter
 // ---------------------------------------------------------------------------

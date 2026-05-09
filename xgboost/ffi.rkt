@@ -123,6 +123,8 @@
   [booster-save-model-to-bytes
    (->* (booster?) (#:format (or/c "json" "ubj")) bytes?)]
   [booster-load-model-from-bytes! (-> booster? bytes? void?)]
+  [booster-serialize-to-bytes (-> booster? bytes?)]
+  [booster-unserialize-from-bytes! (-> booster? bytes? void?)]
   [booster-save-json-config (-> booster? string?)]
   [booster-load-json-config! (-> booster? string? void?)]
   [booster-set-attr! (-> booster? string? string? void?)]
@@ -878,6 +880,30 @@
   (check-ok (xgb-booster-load-model-from-buffer/raw h buf)
             'booster-load-model-from-bytes!))
 
+;; Snapshot the full booster state (including training caches and iteration
+;; counters), so an unserialized handle can keep calling
+;; `booster-update-one-iter!` and produce the same trajectory as the
+;; original.  Same size-then-fill probe as save-model-to-bytes.
+(define (booster-serialize-to-bytes h)
+  (define-values (rc len)
+    (xgb-booster-serialize-to-buffer/raw h 0 (make-bytes 0)))
+  (cond
+    [(zero? rc) (make-bytes len)]
+    [(= rc 2)
+     (define buf (make-bytes len))
+     (define-values (rc2 len2)
+       (xgb-booster-serialize-to-buffer/raw h len buf))
+     (check-ok rc2 'booster-serialize-to-bytes)
+     (unless (= len2 len)
+       (error 'booster-serialize-to-bytes
+              "expected ~a bytes, got ~a" len len2))
+     buf]
+    [else (check-ok rc 'booster-serialize-to-bytes)]))
+
+(define (booster-unserialize-from-bytes! h buf)
+  (check-ok (xgb-booster-unserialize-from-buffer/raw h buf)
+            'booster-unserialize-from-bytes!))
+
 ;; --- Config / attrs / inspection ---------------------------------------
 
 (define (booster-save-json-config h)
@@ -1559,6 +1585,37 @@
                                      (exn-message e))))
                (lambda ()
                  (booster-load-model-from-bytes! b (make-bytes 64 65))))
+    (booster-free! b))
+
+  (test-case "snapshot serialize/unserialize: predictions and training resume"
+    (define-values (b dtrain) (make-trained-regressor #:rounds 5))
+    (define snapshot (booster-serialize-to-bytes b))
+    (check-pred bytes? snapshot)
+    (check-true (> (bytes-length snapshot) 0))
+    (define b2 (booster-create))
+    (booster-unserialize-from-bytes! b2 snapshot)
+    (check-equal?
+     (f32vector->list (booster-predict b2 dtrain))
+     (f32vector->list (booster-predict b dtrain)))
+    ;; Snapshot includes training caches, so a fresh update_one_iter on both
+    ;; boosters must keep them in lockstep.
+    (booster-update-one-iter! b 5 dtrain)
+    (booster-update-one-iter! b2 5 dtrain)
+    (check-equal?
+     (f32vector->list (booster-predict b2 dtrain))
+     (f32vector->list (booster-predict b dtrain)))
+    (booster-free! b2)
+    (booster-free! b)
+    (dmatrix-free! dtrain))
+
+  (test-case "unserialize-from-bytes! on garbage raises with C error context"
+    (define b (booster-create))
+    (check-exn (lambda (e)
+                 (and (exn:fail? e)
+                      (regexp-match? #rx"XGBoosterUnserializeFromBuffer"
+                                     (exn-message e))))
+               (lambda ()
+                 (booster-unserialize-from-bytes! b (make-bytes 64 65))))
     (booster-free! b))
 
   ;; --- Eval one iter ----------------------------------------------------

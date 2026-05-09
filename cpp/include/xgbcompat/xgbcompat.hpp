@@ -334,6 +334,20 @@ int xgb_booster_load_model_from_buffer(xgb_booster_t handle,
                                        const void* data,
                                        uint64_t len);
 
+/* Memory snapshot serialization.  Unlike save_model_to_buffer, this captures
+ * the full booster state (training caches, iteration counters, etc.) so a
+ * snapshot taken mid-training can resume `update_one_iter` calls in a fresh
+ * booster.  Same size-then-fill contract as save_model_to_buffer. */
+int xgb_booster_serialize_to_buffer(xgb_booster_t handle,
+                                    uint64_t buffer_capacity,
+                                    char* out_buffer,
+                                    uint64_t* out_len);
+
+/* Restore a booster from a snapshot produced by serialize_to_buffer. */
+int xgb_booster_unserialize_from_buffer(xgb_booster_t handle,
+                                        const void* data,
+                                        uint64_t len);
+
 /* Save/load XGBoost's internal JSON config. */
 int xgb_booster_save_json_config(xgb_booster_t handle,
                                  uint64_t buffer_capacity,

@@ -1222,6 +1222,65 @@ int xgb_booster_load_model_from_buffer(xgb_booster_t handle,
   }
 }
 
+int xgb_booster_serialize_to_buffer(xgb_booster_t handle,
+                                    uint64_t buffer_capacity,
+                                    char* out_buffer,
+                                    uint64_t* out_len) {
+  if (!handle || !out_len || (buffer_capacity > 0 && !out_buffer)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_serialize_to_buffer: invalid argument";
+    return 1;
+  }
+  *out_len = 0;
+  try {
+    bst_ulong n = 0;
+    const char* data = nullptr;
+    xgbcompat::check(
+        XGBoosterSerializeToBuffer(static_cast<BoosterHandle>(handle),
+                                   &n, &data),
+        "XGBoosterSerializeToBuffer");
+    *out_len = static_cast<uint64_t>(n);
+    if (buffer_capacity < *out_len) {
+      // Booster-owned buffer is invalidated by the next serialization call;
+      // copy on every successful return so it never escapes.
+      return 2;
+    }
+    if (*out_len > 0 && data && out_buffer) {
+      std::copy(data, data + *out_len, out_buffer);
+    }
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_serialize_to_buffer: unknown exception";
+    return 1;
+  }
+}
+
+int xgb_booster_unserialize_from_buffer(xgb_booster_t handle,
+                                        const void* data,
+                                        uint64_t len) {
+  if (!handle || (!data && len > 0)) {
+    xgbcompat::g_last_error =
+        "xgb_booster_unserialize_from_buffer: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGBoosterUnserializeFromBuffer(static_cast<BoosterHandle>(handle),
+                                       data, static_cast<bst_ulong>(len)),
+        "XGBoosterUnserializeFromBuffer");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_unserialize_from_buffer: unknown exception";
+    return 1;
+  }
+}
+
 int xgb_booster_save_json_config(xgb_booster_t handle,
                                  uint64_t buffer_capacity,
                                  char* out_buffer,

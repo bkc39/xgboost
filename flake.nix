@@ -87,7 +87,8 @@
                 examples/20-inplace-predict-dense.rkt \
                 examples/21-inplace-predict-csr.rkt \
                 examples/22-inplace-predict-columnar.rkt \
-                examples/23-custom-objective.rkt
+                examples/23-custom-objective.rkt \
+                examples/24-booster-snapshot.rkt
               runHook postCheck
             '';
 
