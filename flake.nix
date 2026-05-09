@@ -110,7 +110,7 @@
             text = ''
               DEST="$(pwd)/xgboost/native-libs"
               mkdir -p "$DEST"
-              cp -v ${cpp}/lib/libxgbcompat.* "$DEST/"
+              cp -v --no-preserve=mode ${cpp}/lib/libxgbcompat.* "$DEST/"
               echo "Native libraries copied to $DEST"
               ls -la "$DEST"
             '';
@@ -140,7 +140,7 @@
             text = ''
               DEST="$(pwd)/xgboost/native-libs"
               mkdir -p "$DEST"
-              cp -v ${cpp-cuda}/lib/libxgbcompat.* "$DEST/"
+              cp -v --no-preserve=mode ${cpp-cuda}/lib/libxgbcompat.* "$DEST/"
               echo "CUDA native libraries copied to $DEST"
               ls -la "$DEST"
             '';
