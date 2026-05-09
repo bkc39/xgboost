@@ -19,16 +19,32 @@
        (pair? (filter (lambda (f) (regexp-match? pattern (path->string f)))
                       (directory-list dir)))))
 
+; On Linux prefer a CUDA build if one was staged, then fall back to CPU.
+(define (candidate-dirs this-collection-path)
+  (define base (build-path this-collection-path "native-libs" "candidates"))
+  (define platform-dirs
+    (case (system-type 'os)
+      [(macosx) '("darwin")]
+      [(unix)   '("linux-cuda" "linux-cpu")]
+      [else     '()]))
+  (map (lambda (d) (build-path base d)) platform-dirs))
+
 (define (pre-installer collections-top-path this-collection-path user-specific?)
   (define native-libs-dir (build-path this-collection-path "native-libs"))
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
+  (define pattern #rx"^libxgbcompat\\.")
   (cond
     [cpp-lib-path
-     (copy-native-libs! native-libs-dir (build-path cpp-lib-path "lib")
-                        #rx"^libxgbcompat\\.")]
-    [(has-matching-files? native-libs-dir #rx"^libxgbcompat\\.")
+     (copy-native-libs! native-libs-dir (build-path cpp-lib-path "lib") pattern)]
+    [(has-matching-files? native-libs-dir pattern)
      (void)]
     [else
-     (error 'pre-installer
-            "xgbcompat library not found. Either:\n  1. Run: nix run .#copy-native-libs\n  2. Build manually and copy to ~a"
-            (path->string native-libs-dir))]))
+     (define candidate
+       (for/first ([d (in-list (candidate-dirs this-collection-path))]
+                   #:when (has-matching-files? d pattern))
+         d))
+     (if candidate
+         (copy-native-libs! native-libs-dir candidate pattern)
+         (error 'pre-installer
+                "xgbcompat library not found. Either:\n  1. Run: ./scripts/build-so.sh linux|darwin, then raco pkg install\n  2. Set XGBOOST_NATIVE_LIB_PATH to a dir containing lib/libxgbcompat.*\n  3. Copy libxgbcompat.* manually to ~a"
+                (path->string native-libs-dir)))]))

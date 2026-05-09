@@ -32,9 +32,12 @@
 
 ## Phase 4: CUDA And Linux Validation
 
-- [ ] Validate Linux CPU builds in Nix.
-- [ ] Add CUDA-enabled Linux/Nix target work.
-- [ ] Keep macOS as CPU-only.
+- [x] Validate Linux CPU builds in Nix.
+- [x] Add CUDA-enabled Linux/Nix target (`packages.cpp-cuda`, `devShells.cuda`, `apps.copy-native-libs-cuda`).
+- [x] Add `scripts/build-so.sh` with `linux`, `linux-cuda`, `darwin` targets.
+- [x] Keep macOS as CPU-only.
+- [x] Add CUDA training examples: `examples/24-cuda-regression.rkt`, `examples/25-cuda-classification.rkt`.
+- [ ] Run CUDA examples on a physical GPU to validate end-to-end.
 - [ ] Add CI coverage for Linux and Darwin.
 
 ## Phase 5: Cleanup
