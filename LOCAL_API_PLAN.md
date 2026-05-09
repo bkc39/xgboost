@@ -91,10 +91,15 @@ Status: implemented for CPU dense, CSR, and columnar inputs.
 
 Goal: support custom local training behavior without distributed complexity.
 
+Status: custom objective update support is implemented via caller-provided
+gradient and Hessian vectors. Custom metric/eval support remains open.
+
 - Custom objective update support.
 - Custom metric/eval support if the C API and callback lifetime story are
   acceptable from Racket.
 - Carefully document callback lifetimes and exception behavior.
+- Examples:
+  - `examples/23-custom-objective.rkt`
 
 ## Phase 5: Robustness And Cleanup
 

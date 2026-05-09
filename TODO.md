@@ -25,7 +25,7 @@
 - [x] Booster APIs: reset, slice, boosted rounds, number of features.
 - [x] Booster serialization/config/inspection: save/load config, dumps, attrs, feature scores.
 - [ ] Booster snapshots.
-- [ ] Custom objective training.
+- [x] Custom objective training.
 - [x] CPU inplace prediction APIs: dense, CSR, and columnar.
 - [ ] CUDA inplace prediction APIs: CUDA array and columnar variants.
 - [ ] Distributed tracker and communicator APIs. Deferred until the local API implementation is robust.

@@ -246,6 +246,14 @@ int xgb_booster_update_one_iter(xgb_booster_t handle,
                                 int iter,
                                 xgb_dmatrix_t dtrain);
 
+/* Run one custom-objective boosting round using caller-provided gradient and
+ * Hessian array-interface JSON strings. */
+int xgb_booster_train_one_iter(xgb_booster_t handle,
+                               xgb_dmatrix_t dtrain,
+                               int iter,
+                               const char* grad,
+                               const char* hess);
+
 /* Predict against a DMatrix and copy the result into a caller-owned buffer.
  *
  * `config` is an XGBoost JSON predict-config (pass "{}" for defaults — type 0,

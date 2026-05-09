@@ -50,6 +50,7 @@
          xgb-booster-num-feature/raw
          xgb-booster-set-param/raw
          xgb-booster-update-one-iter/raw
+         xgb-booster-train-one-iter/raw
          xgb-booster-predict/raw
          xgb-booster-predict-from-dense/raw
          xgb-booster-predict-from-csr/raw
@@ -348,6 +349,10 @@
 (define-xgb xgb-booster-update-one-iter/raw
   (_fun _Booster _int _DMatrix -> _int)
   #:c-id xgb_booster_update_one_iter)
+
+(define-xgb xgb-booster-train-one-iter/raw
+  (_fun _Booster _DMatrix _int _string/utf-8 _string/utf-8 -> _int)
+  #:c-id xgb_booster_train_one_iter)
 
 ;; predict:
 ;;   capacity:  number of floats writable in `buf` (callers pass

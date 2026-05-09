@@ -903,6 +903,33 @@ int xgb_booster_update_one_iter(xgb_booster_t handle,
   }
 }
 
+int xgb_booster_train_one_iter(xgb_booster_t handle,
+                               xgb_dmatrix_t dtrain,
+                               int iter,
+                               const char* grad,
+                               const char* hess) {
+  if (!handle || !dtrain || !grad || !hess) {
+    xgbcompat::g_last_error = "xgb_booster_train_one_iter: invalid argument";
+    return 1;
+  }
+  try {
+    xgbcompat::check(
+        XGBoosterTrainOneIter(static_cast<BoosterHandle>(handle),
+                              static_cast<DMatrixHandle>(dtrain),
+                              iter,
+                              grad,
+                              hess),
+        "XGBoosterTrainOneIter");
+    return 0;
+  } catch (const std::exception&) {
+    return 1;
+  } catch (...) {
+    xgbcompat::g_last_error =
+        "xgb_booster_train_one_iter: unknown exception";
+    return 1;
+  }
+}
+
 int xgb_booster_predict(xgb_booster_t handle,
                         xgb_dmatrix_t dmat,
                         const char* config,

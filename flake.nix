@@ -86,7 +86,8 @@
                 examples/19-booster-dumps-feature-scores.rkt \
                 examples/20-inplace-predict-dense.rkt \
                 examples/21-inplace-predict-csr.rkt \
-                examples/22-inplace-predict-columnar.rkt
+                examples/22-inplace-predict-columnar.rkt \
+                examples/23-custom-objective.rkt
               runHook postCheck
             '';
 

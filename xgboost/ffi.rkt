@@ -83,6 +83,7 @@
   [booster-num-feature (-> booster? exact-nonnegative-integer?)]
   [booster-set-param! (-> booster? string? string? void?)]
   [booster-update-one-iter! (-> booster? exact-integer? dmatrix? void?)]
+  [booster-train-one-iter! (-> booster? exact-integer? dmatrix? f32vector? f32vector? void?)]
   [booster-predict
    (->* (booster? dmatrix?)
         (#:output (or/c 'value 'margin 'contribs 'approx-contribs
@@ -665,6 +666,20 @@
 (define (booster-update-one-iter! h iter dtrain)
   (check-ok (xgb-booster-update-one-iter/raw h iter dtrain)
             'booster-update-one-iter!))
+
+(define (booster-train-one-iter! h iter dtrain grad hess)
+  (unless (= (f32vector-length grad) (f32vector-length hess))
+    (error 'booster-train-one-iter!
+           "gradient length ~a does not match Hessian length ~a"
+           (f32vector-length grad)
+           (f32vector-length hess)))
+  (check-ok (xgb-booster-train-one-iter/raw
+             h
+             dtrain
+             iter
+             (f32-array-interface grad (list (f32vector-length grad)))
+             (f32-array-interface hess (list (f32vector-length hess))))
+            'booster-train-one-iter!))
 
 ;; Predict against `dmat`, returning a fresh f32vector sized to whatever
 ;; XGBoost emitted.
