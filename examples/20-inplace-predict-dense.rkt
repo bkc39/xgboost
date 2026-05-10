@@ -42,6 +42,8 @@
                         #:missing -1.0
                         #:as 'f32vector))
   (hash 'prediction-count (f32vector-length inplace-preds)
+        'inplace-preds    inplace-preds
+        'dmatrix-preds    dmatrix-preds
         'matches-dmatrix? (f32vector~= inplace-preds dmatrix-preds)))
 
 (module+ main
@@ -55,5 +57,15 @@
   (require rackunit)
 
   (define result (run-example))
+  (define inplace (hash-ref result 'inplace-preds))
+  (define dmatrix (hash-ref result 'dmatrix-preds))
+  (define n (f32vector-length inplace))
+  (define diffs
+    (for/list ([i (in-range n)])
+      (abs (- (f32vector-ref inplace i) (f32vector-ref dmatrix i)))))
+  (define max-diff (apply max diffs))
   (check-equal? (hash-ref result 'prediction-count) 8)
-  (check-true (hash-ref result 'matches-dmatrix?)))
+  (check-true
+   (hash-ref result 'matches-dmatrix?)
+   (format "inplace vs dmatrix predictions differ beyond 1e-4\n  inplace: ~a\n  dmatrix: ~a\n  per-element diffs: ~a\n  max diff: ~a"
+           inplace dmatrix diffs max-diff)))
