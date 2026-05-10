@@ -1,61 +1,53 @@
 #lang racket/base
 
-(require json
-         ffi/vector
-         racket/port
-         xgboost/ffi)
+(require ffi/vector
+         racket/list
+         xgboost)
 
 (provide run-example)
 
-(define (json-string->jsexpr s)
-  (with-input-from-string s read-json))
-
-(define (shape-of-array-interface s)
-  (hash-ref (json-string->jsexpr s) 'shape))
-
 (define (run-example)
   (define dtrain
-    (dmatrix-create-from-dense
+    (make-dmatrix
      (f32vector 1.0 2.0
                 3.0 4.0
                 5.0 6.0
                 7.0 8.0)
-     4
-     2
-     -1.0))
-  (dmatrix-set-float-info! dtrain "label" (f32vector 1.0 3.0 5.0 7.0))
-  (define booster (booster-create (list dtrain)))
-  (booster-set-param! booster "objective" "reg:squarederror")
-  (booster-set-param! booster "tree_method" "hist")
-  (booster-set-param! booster "max_depth" "2")
-  (booster-set-param! booster "verbosity" "0")
-  (booster-update-one-iter! booster 0 dtrain)
+     #:nrow 4
+     #:ncol 2
+     #:missing -1.0
+     #:labels (f32vector 1.0 3.0 5.0 7.0)))
+  (define booster
+    (train dtrain
+           #:objective "reg:squarederror"
+           #:params '(("tree_method" . "hist"))
+           #:max-depth 2
+           #:verbosity 0
+           #:rounds 1))
   (define-values (indptr data)
-    (dmatrix-get-quantile-cut dtrain))
-  (define result
-    (hash 'indptr indptr
-          'data data
-          'indptr-shape (shape-of-array-interface indptr)
-          'data-shape (shape-of-array-interface data)
-          'prediction-count (f32vector-length (booster-predict booster dtrain))))
-  (booster-free! booster)
-  (dmatrix-free! dtrain)
-  result)
+    (dmatrix-quantile-cut dtrain))
+  (hash 'indptr indptr
+        'data data
+        'indptr-length (length indptr)
+        'data-length (f32vector-length data)
+        'prediction-count (f32vector-length
+                           (predict booster dtrain #:as 'f32vector))))
 
 (module+ main
   (define result (run-example))
-  (printf "quantile indptr shape: ~a\n" (hash-ref result 'indptr-shape))
-  (printf "quantile data shape: ~a\n" (hash-ref result 'data-shape))
+  (printf "quantile indptr length: ~a\n" (hash-ref result 'indptr-length))
+  (printf "quantile data length: ~a\n" (hash-ref result 'data-length))
   (printf "prediction count: ~a\n" (hash-ref result 'prediction-count)))
 
 (module+ test
   (require rackunit)
 
   (define result (run-example))
-  (check-regexp-match #rx"^\\{" (hash-ref result 'indptr))
-  (check-regexp-match #rx"^\\{" (hash-ref result 'data))
-  (check-true (pair? (hash-ref result 'indptr-shape)))
-  (check-true (pair? (hash-ref result 'data-shape)))
-  (check-true (> (car (hash-ref result 'indptr-shape)) 0))
-  (check-true (> (car (hash-ref result 'data-shape)) 0))
+  (define indptr (hash-ref result 'indptr))
+  (define data (hash-ref result 'data))
+  (check-true (positive? (length indptr)))
+  (check-equal? (first indptr) 0)
+  (check-true (positive? (last indptr)))
+  (check-true (f32vector? data))
+  (check-equal? (f32vector-length data) (last indptr))
   (check-equal? (hash-ref result 'prediction-count) 4))

@@ -10,7 +10,7 @@
 
 (require ffi/vector
          racket/format
-         xgboost/ffi)
+         xgboost)
 
 ;; 8 rows x 3 features.  Labels were chosen to be roughly
 ;; `2*x0 + x1 - x2` plus a touch of noise — a tree booster fits this easily.
@@ -26,24 +26,23 @@
 
 (define labels (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0))
 
-(define dtrain (dmatrix-create-from-mat features 8 3))
-(dmatrix-set-float-info! dtrain "label" labels)
+(define dtrain
+  (make-dmatrix features #:nrow 8 #:ncol 3 #:labels labels))
 
 (printf "training data:\n")
 (dmatrix-show dtrain)
 (newline)
 
-(define booster (booster-create (list dtrain)))
-(booster-set-param! booster "objective"  "reg:squarederror")
-(booster-set-param! booster "max_depth"  "3")
-(booster-set-param! booster "eta"        "0.1")
-(booster-set-param! booster "verbosity"  "0")
-
 (define rounds 50)
-(for ([iter (in-range rounds)])
-  (booster-update-one-iter! booster iter dtrain))
+(define booster
+  (train dtrain
+         #:objective "reg:squarederror"
+         #:max-depth 3
+         #:eta 0.1
+         #:verbosity 0
+         #:rounds rounds))
 
-(define preds (booster-predict booster dtrain))
+(define preds (predict booster dtrain #:as 'f32vector))
 
 (define (fmt v) (~r v #:precision '(= 4) #:min-width 8))
 (define (col s) (~a s #:width 8 #:align 'right))
@@ -64,6 +63,3 @@
      n))
 
 (printf "\ntraining MSE: ~a\n" (~r mse #:precision '(= 6)))
-
-(booster-free! booster)
-(dmatrix-free! dtrain)

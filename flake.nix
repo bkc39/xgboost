@@ -88,7 +88,7 @@
                 examples/21-inplace-predict-csr.rkt \
                 examples/22-inplace-predict-columnar.rkt \
                 examples/23-custom-objective.rkt \
-                examples/24-booster-snapshot.rkt
+                examples/26-booster-snapshot.rkt
               runHook postCheck
             '';
 
@@ -114,7 +114,7 @@
               mkdir -p "$DEST"
               cp -v --no-preserve=mode ${cpp}/lib/libxgbcompat.* "$DEST/"
               cp -v --no-preserve=mode ${pkgs.xgboost}/lib/libxgboost.so "$DEST/"
-              patchelf --set-rpath '$ORIGIN' "$DEST/libxgbcompat.so"
+              patchelf --set-rpath "\$ORIGIN" "$DEST/libxgbcompat.so"
               echo "Native libraries copied to $DEST"
               ls -la "$DEST"
             '';
@@ -170,7 +170,7 @@
               mkdir -p "$DEST"
               cp -v --no-preserve=mode ${cpp-cuda}/lib/libxgbcompat.* "$DEST/"
               cp -v --no-preserve=mode ${pkgs-cuda.xgboost}/lib/libxgboost.so "$DEST/"
-              patchelf --set-rpath '$ORIGIN' "$DEST/libxgbcompat.so"
+              patchelf --set-rpath "\$ORIGIN" "$DEST/libxgbcompat.so"
               echo "CUDA native libraries copied to $DEST"
               ls -la "$DEST"
             '';
@@ -258,11 +258,12 @@
               # Expose host NVIDIA driver libs (libcuda.so etc.) without
               # overriding Nix-packaged glibc. We symlink only the NVIDIA/CUDA
               # files into a temp dir so the full system lib dir isn't on the path.
+              export LD_LIBRARY_PATH="${pkgs-cuda.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               if [ -d /usr/lib/x86_64-linux-gnu ]; then
                 _nvidia_stub=$(mktemp -d)
                 ln -sf /usr/lib/x86_64-linux-gnu/libcuda.so* "$_nvidia_stub/" 2>/dev/null || true
                 ln -sf /usr/lib/x86_64-linux-gnu/libnvidia*.so* "$_nvidia_stub/" 2>/dev/null || true
-                export LD_LIBRARY_PATH="$_nvidia_stub''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+                export LD_LIBRARY_PATH="$_nvidia_stub:$LD_LIBRARY_PATH"
                 unset _nvidia_stub
               fi
               _rkt_ver=$(racket --version 2>&1 | grep -oP 'v\d+\.\d+' | tr -d 'v' | tr '.' '-')

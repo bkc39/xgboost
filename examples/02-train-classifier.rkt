@@ -11,7 +11,7 @@
 
 (require ffi/vector
          racket/format
-         xgboost/ffi)
+         xgboost)
 
 ;; 10 rows x 4 features, alternating class 0 / class 1.
 (define features
@@ -28,24 +28,23 @@
 
 (define labels (f32vector 0.0 1.0 0.0 1.0 0.0 1.0 0.0 1.0 0.0 1.0))
 
-(define dtrain (dmatrix-create-from-mat features 10 4))
-(dmatrix-set-float-info! dtrain "label" labels)
+(define dtrain
+  (make-dmatrix features #:nrow 10 #:ncol 4 #:labels labels))
 
 (printf "training data:\n")
 (dmatrix-show dtrain)
 (newline)
 
-(define booster (booster-create (list dtrain)))
-(booster-set-param! booster "objective" "binary:logistic")
-(booster-set-param! booster "max_depth" "3")
-(booster-set-param! booster "eta"       "0.3")
-(booster-set-param! booster "verbosity" "0")
-
 (define rounds 30)
-(for ([iter (in-range rounds)])
-  (booster-update-one-iter! booster iter dtrain))
+(define booster
+  (train dtrain
+         #:objective "binary:logistic"
+         #:max-depth 3
+         #:eta 0.3
+         #:verbosity 0
+         #:rounds rounds))
 
-(define probs (booster-predict booster dtrain))
+(define probs (predict booster dtrain #:as 'f32vector))
 
 (define (fmt v) (~r v #:precision '(= 4) #:min-width 8))
 (define (col s) (~a s #:width 8 #:align 'right))
@@ -70,6 +69,3 @@
 (printf "\naccuracy: ~a/~a (~a%)\n"
         correct n
         (~r (* 100 (/ correct n)) #:precision '(= 1)))
-
-(booster-free! booster)
-(dmatrix-free! dtrain)

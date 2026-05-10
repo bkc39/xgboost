@@ -2,7 +2,7 @@
 
 (require ffi/vector
          racket/file
-         xgboost/ffi)
+         xgboost)
 
 (provide run-example)
 
@@ -17,13 +17,13 @@
 
 (define (run-example)
   (define dm
-    (dmatrix-create-from-dense
+    (make-dmatrix
      (f32vector 1.0 2.0
                 3.0 4.0
                 5.0 6.0)
-     3
-     2
-     -1.0))
+     #:nrow 3
+     #:ncol 2
+     #:missing -1.0))
   (define sliced (dmatrix-slice dm '(2 0)))
   (define sliced-values (dmatrix->list sliced))
   (define tmp (make-temporary-file "xgboost-dmatrix-~a.buffer"))
@@ -34,24 +34,16 @@
       void
       (lambda ()
         (dmatrix-save-binary! sliced tmp)
-        (define loaded
-          (dmatrix-create-from-uri
-           (format "{\"uri\":\"~a\",\"silent\":1}" (path->string tmp))))
-        (begin0
-          (hash 'rows (dmatrix-nrow loaded)
-                'cols (dmatrix-ncol loaded)
-                'values (dmatrix->list loaded))
-          (dmatrix-free! loaded)))
+        (define loaded (make-dmatrix-from-uri tmp))
+        (hash 'rows (dmatrix-rows loaded)
+              'cols (dmatrix-cols loaded)
+              'values (dmatrix->list loaded)))
       (lambda ()
         (when (file-exists? tmp)
           (delete-file tmp)))))
 
-  (define result
-    (hash 'sliced-values sliced-values
-          'loaded-summary loaded-summary))
-  (dmatrix-free! sliced)
-  (dmatrix-free! dm)
-  result)
+  (hash 'sliced-values sliced-values
+        'loaded-summary loaded-summary))
 
 (module+ main
   (define result (run-example))

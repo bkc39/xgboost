@@ -2,7 +2,7 @@
 
 (require ffi/vector
          racket/list
-         xgboost/ffi)
+         xgboost)
 
 (provide run-example)
 
@@ -25,41 +25,39 @@
     (f32vector-ref vec i)))
 
 (define (run-example)
-  (define dm (dmatrix-create-from-mat features 8 3 -1.0))
-  (dmatrix-set-float-info! dm "label" labels)
-  (dmatrix-set-feature-info! dm "feature_name" feature-names)
-  (dmatrix-set-feature-info! dm "feature_type" feature-types)
-  (define booster (booster-create (list dm)))
-  (booster-set-param! booster "objective" "reg:squarederror")
-  (booster-set-param! booster "max_depth" "3")
-  (booster-set-param! booster "eta" "0.1")
-  (booster-set-param! booster "verbosity" "0")
-  (booster-set-feature-info! booster "feature_name" feature-names)
-  (booster-set-feature-info! booster "feature_type" feature-types)
-  (for ([iter (in-range 20)])
-    (booster-update-one-iter! booster iter dm))
+  (define dm
+    (make-dmatrix features #:nrow 8 #:ncol 3 #:missing -1.0 #:labels labels))
+  (dmatrix-set-feature-names! dm feature-names)
+  (dmatrix-set-feature-types! dm feature-types)
+  (define booster
+    (train dm
+           #:objective "reg:squarederror"
+           #:max-depth 3
+           #:eta 0.1
+           #:verbosity 0
+           #:rounds 20))
+  (booster-set-feature-names! booster feature-names)
+  (booster-set-feature-types! booster feature-types)
 
-  (define text-dumps (booster-dump-model booster #:format "text"))
-  (define json-dumps (booster-dump-model booster #:format "json"))
+  (define text-dumps (booster-dump booster #:format "text"))
+  (define json-dumps (booster-dump booster #:format "json"))
   (define named-dumps
-    (booster-dump-model-with-features booster feature-names feature-types
-                                      #:format "text"))
+    (booster-dump booster
+                  #:format "text"
+                  #:feature-names feature-names
+                  #:feature-types feature-types))
   (define scores
     (booster-feature-score booster
                            #:importance-type "weight"
                            #:feature-names feature-names))
-  (define result
-    (hash 'feature-info (booster-get-feature-info booster "feature_name")
-          'text-dump-count (length text-dumps)
-          'json-dump-has-object? (regexp-match? #rx"\\{" (car json-dumps))
-          'named-dump-mentions-feature?
-          (ormap (lambda (dump) (regexp-match? #rx"x[0-2]" dump)) named-dumps)
-          'score-features (hash-ref scores 'features)
-          'score-shape (hash-ref scores 'shape)
-          'score-values (f32vector->plain-list (hash-ref scores 'scores))))
-  (booster-free! booster)
-  (dmatrix-free! dm)
-  result)
+  (hash 'feature-info (booster-feature-names booster)
+        'text-dump-count (length text-dumps)
+        'json-dump-has-object? (regexp-match? #rx"\\{" (car json-dumps))
+        'named-dump-mentions-feature?
+        (ormap (lambda (dump) (regexp-match? #rx"x[0-2]" dump)) named-dumps)
+        'score-features (hash-ref scores 'features)
+        'score-shape (hash-ref scores 'shape)
+        'score-values (f32vector->plain-list (hash-ref scores 'scores))))
 
 (module+ main
   (define result (run-example))

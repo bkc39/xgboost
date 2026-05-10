@@ -1,7 +1,7 @@
 #lang racket/base
 
 (require ffi/vector
-         xgboost/ffi)
+         xgboost)
 
 (provide run-example)
 
@@ -34,29 +34,25 @@
          (< (abs (- (f32vector-ref a i) (f32vector-ref b i))) 1e-6))))
 
 (define (make-trained)
-  (define dtrain (dmatrix-create-from-mat dense-features 8 3 -1.0))
-  (dmatrix-set-float-info! dtrain "label" labels)
-  (define booster (booster-create (list dtrain)))
-  (booster-set-param! booster "objective" "reg:squarederror")
-  (booster-set-param! booster "max_depth" "3")
-  (booster-set-param! booster "eta" "0.1")
-  (booster-set-param! booster "verbosity" "0")
-  (for ([iter (in-range 20)])
-    (booster-update-one-iter! booster iter dtrain))
-  (values booster dtrain))
+  (define dtrain
+    (make-dmatrix dense-features #:nrow 8 #:ncol 3 #:missing -1.0 #:labels labels))
+  (values (train dtrain
+                 #:objective "reg:squarederror"
+                 #:max-depth 3
+                 #:eta 0.1
+                 #:verbosity 0
+                 #:rounds 20)
+          dtrain))
 
 (define (run-example)
   (define-values (booster dtrain) (make-trained))
-  (define dmatrix-preds (booster-predict booster dtrain))
+  (define dmatrix-preds (predict booster dtrain #:as 'f32vector))
   (define inplace-preds
-    (booster-predict-from-csr booster csr-indptr csr-indices dense-features 3
-                              #:missing -1.0))
-  (define result
-    (hash 'prediction-count (f32vector-length inplace-preds)
-          'matches-dmatrix? (f32vector~= inplace-preds dmatrix-preds)))
-  (booster-free! booster)
-  (dmatrix-free! dtrain)
-  result)
+    (predict-from-csr booster csr-indptr csr-indices dense-features 3
+                      #:missing -1.0
+                      #:as 'f32vector))
+  (hash 'prediction-count (f32vector-length inplace-preds)
+        'matches-dmatrix? (f32vector~= inplace-preds dmatrix-preds)))
 
 (module+ main
   (define result (run-example))

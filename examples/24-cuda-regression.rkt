@@ -59,8 +59,6 @@
           'mse              mse
           'improved?        (< mse 1.0)))
 
-  (booster-free! booster)
-  (dmatrix-free! dtrain)
   result)
 
 (module+ main

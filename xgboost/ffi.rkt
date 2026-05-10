@@ -2,6 +2,7 @@
 
 (require (except-in ffi/unsafe ->)
          ffi/vector
+         json
          racket/contract
          racket/list
          racket/string
@@ -60,7 +61,6 @@
   [dmatrix-set-uint-info! (-> dmatrix? string? u32vector? void?)]
   [dmatrix-set-info-from-interface! (-> dmatrix? string? string? void?)]
   [dmatrix-set-feature-info! (-> dmatrix? string? (listof string?) void?)]
-  [dmatrix-free! (-> dmatrix? void?)]
   [dmatrix-nrow (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix-ncol (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix-get-float-info (-> dmatrix? string? f32vector?)]
@@ -70,10 +70,11 @@
   [dmatrix->list (-> dmatrix? (listof (listof real?)))]
   [dmatrix-save-binary! (->* (dmatrix? path-string?) (#:silent? any/c) void?)]
   [dmatrix-get-quantile-cut (->* (dmatrix?) (string?) (values string? string?))]
+  [array-interface->u64vector (-> string? u64vector?)]
+  [array-interface->f32vector (-> string? f32vector?)]
   [dmatrix-show (->* (dmatrix?) (output-port?) void?)]
   [booster? (-> any/c boolean?)]
   [booster-create (->* () ((listof dmatrix?)) booster?)]
-  [booster-free! (-> booster? void?)]
   [booster-reset! (-> booster? void?)]
   [booster-slice
    (->* (booster? exact-integer? exact-integer?)
@@ -153,7 +154,74 @@
    (-> booster? exact-integer?
        (listof (cons/c string? dmatrix?))
        string?)]
-  [parse-eval-line (-> string? (hash/c string? real?))]))
+  [parse-eval-line (-> string? (hash/c string? real?))]
+  [dmatrix-handle (-> dmatrix? cpointer?)]
+  [dmatrix-rows (-> dmatrix? exact-nonnegative-integer?)]
+  [dmatrix-cols (-> dmatrix? exact-nonnegative-integer?)]
+  [booster-handle (-> booster? cpointer?)]
+  [booster-cache (-> booster? (listof dmatrix?))]))
+
+;; -------------------------------------------------------------------------
+;; Struct wrappers.
+;;
+;; DMatrix and Booster are wrapper structs over the raw cpointers from
+;; xgboost/ffi/raw.  Both use `prop:cpointer` so they are accepted directly
+;; by typed FFI calls (`_DMatrix`, `_Booster`) — no manual handle extraction
+;; is needed when threading them through the raw layer.
+;;
+;; The cpointer is the first field, so prop:cpointer 0 makes the struct
+;; itself stand in for the cpointer.  The struct retains additional Racket
+;; data:
+;;   dmatrix:  cached row/col counts (avoids a C round-trip per query).
+;;   booster:  the list of DMatrix wrappers passed at creation time.  XGBoost
+;;             stores those handles as weak references for prediction-cache
+;;             invalidation, so they must outlive the booster — keeping them
+;;             in a struct field pins their lifetime to ours, no global
+;;             retention table required.
+;;
+;; The auto-generated struct predicate matches any wrapper, alive or not.
+;; The exported `dmatrix?` / `booster?` predicates additionally require the
+;; underlying cpointer to still carry its DMatrix / Booster tag, so a
+;; wrapper whose handle has been explicitly freed (via the `unsafe`
+;; submodule) fails contract checks with a clearer message than the raw FFI
+;; tag-mismatch error.
+;; -------------------------------------------------------------------------
+
+(struct dmatrix-impl (handle rows cols)
+  #:reflection-name 'dmatrix
+  #:property prop:cpointer 0
+  #:property prop:custom-write
+  (lambda (dm port _mode)
+    (fprintf port "#<dmatrix:~ax~a>"
+             (dmatrix-impl-rows dm)
+             (dmatrix-impl-cols dm))))
+
+(define (dmatrix? v)
+  (and (dmatrix-impl? v) (DMatrix? v)))
+
+(define dmatrix-handle dmatrix-impl-handle)
+(define dmatrix-rows dmatrix-impl-rows)
+(define dmatrix-cols dmatrix-impl-cols)
+
+(define (wrap-dmatrix h)
+  (define-values (rc-r nrow) (xgb-dmatrix-num-row/raw h))
+  (check-ok rc-r 'wrap-dmatrix)
+  (define-values (rc-c ncol) (xgb-dmatrix-num-col/raw h))
+  (check-ok rc-c 'wrap-dmatrix)
+  (dmatrix-impl h nrow ncol))
+
+(struct booster-impl (handle cache)
+  #:reflection-name 'booster
+  #:property prop:cpointer 0
+  #:property prop:custom-write
+  (lambda (_b port _mode)
+    (fprintf port "#<booster>")))
+
+(define (booster? v)
+  (and (booster-impl? v) (Booster? v)))
+
+(define booster-handle booster-impl-handle)
+(define booster-cache booster-impl-cache)
 
 (define (xgboost-version)
   (xgb-version/raw))
@@ -215,8 +283,6 @@
 ;; of double-freeing at the C level.
 ;; ---------------------------------------------------------------------------
 
-(define (dmatrix? v) (DMatrix? v))
-
 (define (dmatrix-create-from-mat data nrow ncol [missing +nan.0])
   (define expected (* nrow ncol))
   (unless (= (f32vector-length data) expected)
@@ -229,7 +295,8 @@
     (error 'dmatrix-create-from-mat
            "XGBoost returned NULL handle: ~a"
            (xgb-last-error/raw)))
-  h)
+  ;; Trust the user-supplied dimensions; avoids a redundant C round-trip.
+  (dmatrix-impl h nrow ncol))
 
 (define (check-handle who h)
   (unless h
@@ -237,28 +304,33 @@
   h)
 
 (define (dmatrix-create-from-uri config)
-  (check-handle 'dmatrix-create-from-uri
-                (xgb-dmatrix-create-from-uri/raw config)))
+  (wrap-dmatrix
+   (check-handle 'dmatrix-create-from-uri
+                 (xgb-dmatrix-create-from-uri/raw config))))
 
 (define (dmatrix-create-from-dense-array-interface data-json [config "{\"missing\":NaN}"])
-  (check-handle 'dmatrix-create-from-dense-array-interface
-                (xgb-dmatrix-create-from-dense/raw data-json config)))
+  (wrap-dmatrix
+   (check-handle 'dmatrix-create-from-dense-array-interface
+                 (xgb-dmatrix-create-from-dense/raw data-json config))))
 
 (define (dmatrix-create-from-csr-array-interface indptr-json indices-json data-json ncol
                                                  [config "{\"missing\":NaN}"])
-  (check-handle 'dmatrix-create-from-csr-array-interface
-                (xgb-dmatrix-create-from-csr/raw indptr-json indices-json
-                                                 data-json ncol config)))
+  (wrap-dmatrix
+   (check-handle 'dmatrix-create-from-csr-array-interface
+                 (xgb-dmatrix-create-from-csr/raw indptr-json indices-json
+                                                  data-json ncol config))))
 
 (define (dmatrix-create-from-csc-array-interface indptr-json indices-json data-json nrow
                                                  [config "{\"missing\":NaN}"])
-  (check-handle 'dmatrix-create-from-csc-array-interface
-                (xgb-dmatrix-create-from-csc/raw indptr-json indices-json
-                                                 data-json nrow config)))
+  (wrap-dmatrix
+   (check-handle 'dmatrix-create-from-csc-array-interface
+                 (xgb-dmatrix-create-from-csc/raw indptr-json indices-json
+                                                  data-json nrow config))))
 
 (define (dmatrix-create-from-columnar-array-interface data-json [config "{\"missing\":NaN}"])
-  (check-handle 'dmatrix-create-from-columnar-array-interface
-                (xgb-dmatrix-create-from-columnar/raw data-json config)))
+  (wrap-dmatrix
+   (check-handle 'dmatrix-create-from-columnar-array-interface
+                 (xgb-dmatrix-create-from-columnar/raw data-json config))))
 
 (define (json-number v)
   (cond
@@ -375,7 +447,7 @@
   (unless sliced
     (error 'dmatrix-slice
            "XGBoost returned NULL handle: ~a" (xgb-last-error/raw)))
-  sliced)
+  (wrap-dmatrix sliced))
 
 (define (dmatrix-set-float-info! h field vals)
   (check-ok (xgb-dmatrix-set-float-info/raw h field vals)
@@ -426,20 +498,14 @@
      (nul-separated-bytes->strings buf count2)]
     [else (check-ok rc 'dmatrix-get-feature-info)]))
 
-(define (dmatrix-free! h)
+(define (dmatrix-free! dm)
+  (define h (dmatrix-handle dm))
   (when (cpointer-has-tag? h 'DMatrix)
     (xgb-dmatrix-free/raw h)
     (set-cpointer-tag! h 'DMatrix-freed)))
 
-(define (dmatrix-nrow h)
-  (define-values (rc out) (xgb-dmatrix-num-row/raw h))
-  (check-ok rc 'dmatrix-nrow)
-  out)
-
-(define (dmatrix-ncol h)
-  (define-values (rc out) (xgb-dmatrix-num-col/raw h))
-  (check-ok rc 'dmatrix-ncol)
-  out)
+(define (dmatrix-nrow dm) (dmatrix-rows dm))
+(define (dmatrix-ncol dm) (dmatrix-cols dm))
 
 ;; Copy a float info field into a fresh f32vector.  The pointer returned by
 ;; the raw call is borrowed from the DMatrix; we memcpy out of it before
@@ -469,6 +535,28 @@
 (define (dmatrix-save-binary! h path #:silent? [silent? #t])
   (check-ok (xgb-dmatrix-save-binary/raw h path (if silent? 1 0))
             'dmatrix-save-binary!))
+
+(define (parse-array-interface who s expected-typestr)
+  (define j (string->jsexpr s))
+  (define ptr-int (car (hash-ref j 'data)))
+  (define typestr (hash-ref j 'typestr))
+  (define shape (hash-ref j 'shape))
+  (unless (equal? typestr expected-typestr)
+    (error who "expected typestr ~s, got ~s" expected-typestr typestr))
+  (values (cast ptr-int _uintptr _pointer)
+          (apply * shape)))
+
+(define (array-interface->u64vector s)
+  (define-values (ptr n) (parse-array-interface 'array-interface->u64vector s "<u8"))
+  (define vec (make-u64vector n))
+  (memcpy (u64vector->cpointer vec) ptr (* n 8))
+  vec)
+
+(define (array-interface->f32vector s)
+  (define-values (ptr n) (parse-array-interface 'array-interface->f32vector s "<f4"))
+  (define vec (make-f32vector n))
+  (memcpy (f32vector->cpointer vec) ptr (* n 4))
+  vec)
 
 (define (dmatrix-get-quantile-cut h [config "{}"])
   (define-values (rc indptr-len data-len)
@@ -597,8 +685,6 @@
 ;; inference-mode predictions over all iterations.
 ;; ---------------------------------------------------------------------------
 
-(define (booster? v) (Booster? v))
-
 ;; XGBoost's predict-type integers, per the C API doc:
 ;;   0 value (default), 1 margin, 2 SHAP contribution,
 ;;   3 approximate SHAP, 4 SHAP interaction,
@@ -630,27 +716,35 @@
 
 (define booster-default-predict-config (build-predict-config))
 
+;; XGBoost's XGBoosterCreate stores the cache DMatrix handles for prediction
+;; result caching and expects them to outlive the booster.  At the C level it
+;; only keeps weak references — so if Racket GCs a cache DMatrix while the
+;; booster still exists, subsequent operations would touch freed memory.  The
+;; booster struct's cache field pins those DMatrices alive for the booster's
+;; lifetime; no out-of-band retention table is needed.
 (define (booster-create [cache '()])
-  (define h (xgb-booster-create/raw cache))
+  (define h (xgb-booster-create/raw (map dmatrix-handle cache)))
   (unless h
     (error 'booster-create
            "XGBoost returned NULL handle: ~a" (xgb-last-error/raw)))
-  h)
+  (booster-impl h cache))
 
-(define (booster-free! h)
+(define (booster-free! b)
+  (define h (booster-handle b))
   (when (cpointer-has-tag? h 'Booster)
     (xgb-booster-free/raw h)
     (set-cpointer-tag! h 'Booster-freed)))
 
-(define (booster-reset! h)
-  (check-ok (xgb-booster-reset/raw h) 'booster-reset!))
+(define (booster-reset! b)
+  (check-ok (xgb-booster-reset/raw b) 'booster-reset!))
 
-(define (booster-slice h begin-layer end-layer [step 1])
-  (define sliced (xgb-booster-slice/raw h begin-layer end-layer step))
+(define (booster-slice b begin-layer end-layer [step 1])
+  (define sliced (xgb-booster-slice/raw b begin-layer end-layer step))
   (unless sliced
     (error 'booster-slice
            "XGBoost returned NULL handle: ~a" (xgb-last-error/raw)))
-  sliced)
+  ;; A sliced booster is C-side independent and needs no Racket-side cache.
+  (booster-impl sliced '()))
 
 (define (booster-boosted-rounds h)
   (define-values (rc out) (xgb-booster-boosted-rounds/raw h))
@@ -1080,6 +1174,20 @@
     (define key (cadr m))
     (define val (string->number (caddr m)))
     (values key (if (real? val) val +nan.0))))
+
+;; Explicit-free escape hatch.  The high-level `xgboost` API and the safe
+;; `xgboost/ffi` surface above rely on the GC: the raw layer registers a
+;; finalizer at allocation time, so handles are reclaimed automatically once
+;; unreachable.  These providers are for callers who need to release a
+;; handle on a deterministic schedule (long-lived processes, large
+;; in-flight DMatrices) or who are migrating from a legacy explicit-free
+;; codebase.  Both are idempotent: they flip the cpointer tag so a second
+;; call raises an `exn:fail:contract` instead of double-freeing at the C
+;; level.
+(module+ unsafe
+  (provide (contract-out
+            [dmatrix-free! (-> dmatrix? void?)]
+            [booster-free! (-> booster? void?)])))
 
 (module+ test
   (require rackunit

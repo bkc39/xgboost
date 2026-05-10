@@ -1,24 +1,21 @@
 #lang racket/base
 
-(require xgboost/ffi)
+(require xgboost)
 
 (provide run-example)
 
 (define (run-example)
-  (define booster (booster-create))
-  (booster-set-attr! booster "owner" "racket")
-  (booster-set-attr! booster "purpose" "example")
+  (define b (make-booster))
+  (booster-set-attr! b "owner" "racket")
+  (booster-set-attr! b "purpose" "example")
   (define before-delete
-    (hash 'owner (booster-get-attr booster "owner")
-          'purpose (booster-get-attr booster "purpose")
-          'names (sort (booster-get-attr-names booster) string<?)))
-  (booster-delete-attr! booster "purpose")
-  (define result
-    (hash 'before-delete before-delete
-          'purpose-after-delete (booster-get-attr booster "purpose")
-          'names-after-delete (booster-get-attr-names booster)))
-  (booster-free! booster)
-  result)
+    (hash 'owner (booster-attr b "owner")
+          'purpose (booster-attr b "purpose")
+          'names (sort (booster-attr-names b) string<?)))
+  (booster-delete-attr! b "purpose")
+  (hash 'before-delete before-delete
+        'purpose-after-delete (booster-attr b "purpose")
+        'names-after-delete (booster-attr-names b)))
 
 (module+ main
   (define result (run-example))
