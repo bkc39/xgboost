@@ -12,16 +12,11 @@
 ;;   nix develop .#cuda --command racket examples/24-cuda-regression.rkt
 
 (require ffi/vector
-         json
          racket/format
-         racket/port
+         (only-in xgboost cuda-available?)
          xgboost/ffi)
 
 (provide run-example cuda-available?)
-
-(define (cuda-available?)
-  (define info (with-input-from-string (xgboost-build-info) read-json))
-  (hash-ref info 'USE_CUDA #f))
 
 (define features
   (f32vector 1.0 2.0 0.5
