@@ -38,7 +38,7 @@
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
   ; Matches libxgbcompat, libxgboost, and libgomp so all bundled libs are
   ; copied from candidates alongside libxgbcompat.
-  (define pattern #rx"^lib(xgbcompat|xgboost|gomp)\\.")
+  (define pattern #rx"^lib(xgbcompat|xgboost|gomp|omp)\\.")
   (define installed-pattern #rx"^libxgbcompat\\.")
   (cond
     [cpp-lib-path

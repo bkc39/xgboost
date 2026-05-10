@@ -46,21 +46,51 @@ bundle_linux() {
 
 bundle_darwin() {
   local dest="$1"
-  local xgboost_dylib=""
+  local xgboost_dylib="" libomp_dylib=""
   while IFS= read -r p; do
-    if [ -f "$p/lib/libxgboost.dylib" ]; then
-      xgboost_dylib="$p/lib/libxgboost.dylib"
-      break
-    fi
+    [ -z "$xgboost_dylib" ] && [ -f "$p/lib/libxgboost.dylib" ] && xgboost_dylib="$p/lib/libxgboost.dylib"
+    [ -z "$libomp_dylib" ]  && [ -f "$p/lib/libomp.dylib" ]    && libomp_dylib="$p/lib/libomp.dylib"
   done < <(nix path-info -r ".#cpp" 2>/dev/null)
 
-  if [ -z "$xgboost_dylib" ]; then
-    echo "Warning: could not locate libxgboost.dylib in build closure — skipping bundle" >&2
-    return
+  # Patch libxgbcompat.dylib: fix install name, rewrite Nix dep on libxgboost, add rpath.
+  chmod +w "$dest/libxgbcompat.dylib"
+  install_name_tool -id @rpath/libxgbcompat.dylib "$dest/libxgbcompat.dylib"
+  local xgboost_ref
+  xgboost_ref=$(otool -L "$dest/libxgbcompat.dylib" | awk '/libxgboost/{print $1}')
+  if [ -n "$xgboost_ref" ]; then
+    install_name_tool -change "$xgboost_ref" @rpath/libxgboost.dylib "$dest/libxgbcompat.dylib"
   fi
-  cp -v --no-preserve=mode "$xgboost_dylib" "$dest/"
   install_name_tool -add_rpath @loader_path/. "$dest/libxgbcompat.dylib"
-  echo "Bundled $(basename "$xgboost_dylib") and set rpath on libxgbcompat.dylib"
+  echo "Patched libxgbcompat.dylib: install name, libxgboost dep, and rpath"
+
+  # Bundle and fix libxgboost.dylib.
+  if [ -n "$xgboost_dylib" ]; then
+    cp -v "$xgboost_dylib" "$dest/"
+    chmod +w "$dest/libxgboost.dylib"
+    install_name_tool -id @rpath/libxgboost.dylib "$dest/libxgboost.dylib"
+    # Strip all non-@ rpaths (Nix store paths, stray /lib, etc.)
+    for rp in $(otool -l "$dest/libxgboost.dylib" | grep '^ *path ' | awk '{print $2}' | grep -v '^@'); do
+      install_name_tool -delete_rpath "$rp" "$dest/libxgboost.dylib"
+    done
+    install_name_tool -add_rpath @loader_path/. "$dest/libxgboost.dylib"
+    echo "Bundled libxgboost.dylib with @loader_path/. rpath"
+  else
+    echo "Warning: could not locate libxgboost.dylib in build closure" >&2
+  fi
+
+  # Bundle and fix libomp.dylib.
+  if [ -n "$libomp_dylib" ]; then
+    cp -v "$libomp_dylib" "$dest/"
+    chmod +w "$dest/libomp.dylib"
+    install_name_tool -id @rpath/libomp.dylib "$dest/libomp.dylib"
+    for rp in $(otool -l "$dest/libomp.dylib" | grep '^ *path ' | awk '{print $2}' | grep -v '^@'); do
+      install_name_tool -delete_rpath "$rp" "$dest/libomp.dylib"
+    done
+    install_name_tool -add_rpath @loader_path/. "$dest/libomp.dylib"
+    echo "Bundled libomp.dylib with @loader_path/. rpath"
+  else
+    echo "Warning: could not locate libomp.dylib in build closure" >&2
+  fi
 }
 
 case "$TARGET" in
@@ -110,7 +140,7 @@ case "$TARGET" in
     echo "Building CPU-only libxgbcompat for macOS..."
     nix build .#cpp --print-build-logs
     mkdir -p xgboost/native-libs/candidates/darwin
-    cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/native-libs/candidates/darwin/
+    cp -v result/lib/libxgbcompat.* xgboost/native-libs/candidates/darwin/
     bundle_darwin xgboost/native-libs/candidates/darwin
     echo "Done. CPU .dylib installed to xgboost/native-libs/candidates/darwin/"
     ;;
