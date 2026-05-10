@@ -1,13 +1,13 @@
 #lang racket/base
 
 (require ffi/vector
-         xgboost/ffi)
+         xgboost)
 
 (provide run-example)
 
-;; Demonstrates booster_serialize_to_buffer / unserialize_from_buffer:
-;; a full-state snapshot (training caches included) lets a fresh booster
-;; resume update_one_iter calls in lockstep with the original.
+;; Demonstrates booster->bytes / bytes->booster: a full-state snapshot
+;; (training caches included) lets a fresh booster resume per-iter
+;; updates in lockstep with the original.
 
 (define features
   (f32vector 1.0 2.0 0.5
@@ -26,42 +26,39 @@
     (booster-update-one-iter! b iter dtrain)))
 
 (define (run-example)
-  (define dtrain (dmatrix-create-from-mat features 8 3 -1.0))
-  (dmatrix-set-float-info! dtrain "label" labels)
-  (define b (booster-create (list dtrain)))
-  (booster-set-param! b "objective" "reg:squarederror")
-  (booster-set-param! b "max_depth" "3")
-  (booster-set-param! b "eta" "0.1")
-  (booster-set-param! b "verbosity" "0")
+  (define dtrain
+    (make-dmatrix features #:nrow 8 #:ncol 3 #:missing -1.0 #:labels labels))
+  ;; Set up the booster with params; train manually to leave per-iter
+  ;; control to the example so we can resume after the snapshot.
+  (define b
+    (train dtrain
+           #:objective "reg:squarederror"
+           #:max-depth 3
+           #:eta 0.1
+           #:verbosity 0
+           #:rounds 0))
   (train-rounds! b dtrain 0 5)
 
   ;; Snapshot the partially-trained booster.
-  (define snapshot (booster-serialize-to-bytes b))
-  (define snapshot-preds (booster-predict b dtrain))
+  (define snapshot (booster->bytes b))
+  (define snapshot-preds (predict b dtrain #:as 'f32vector))
 
   ;; Restore into a fresh handle.  Predictions match immediately.
-  (define restored (booster-create))
-  (booster-unserialize-from-bytes! restored snapshot)
-  (define restored-preds (booster-predict restored dtrain))
+  (define restored (bytes->booster snapshot))
+  (define restored-preds (predict restored dtrain #:as 'f32vector))
 
   ;; Continue training from round 5 on both — they must stay in lockstep
   ;; because the snapshot includes XGBoost's internal training caches.
   (train-rounds! b dtrain 5 5)
   (train-rounds! restored dtrain 5 5)
 
-  (define result
-    (hash 'snapshot-bytes (bytes-length snapshot)
-          'matches-immediately?
-          (equal? (f32vector->list snapshot-preds)
-                  (f32vector->list restored-preds))
-          'matches-after-resume?
-          (equal? (f32vector->list (booster-predict b dtrain))
-                  (f32vector->list (booster-predict restored dtrain)))))
-
-  (booster-free! restored)
-  (booster-free! b)
-  (dmatrix-free! dtrain)
-  result)
+  (hash 'snapshot-bytes (bytes-length snapshot)
+        'matches-immediately?
+        (equal? (f32vector->list snapshot-preds)
+                (f32vector->list restored-preds))
+        'matches-after-resume?
+        (equal? (f32vector->list (predict b dtrain #:as 'f32vector))
+                (f32vector->list (predict restored dtrain #:as 'f32vector)))))
 
 (module+ main
   (define result (run-example))

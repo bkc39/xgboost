@@ -24,7 +24,7 @@
          racket/format
          racket/list
          racket/string
-         xgboost/ffi)
+         xgboost)
 
 (define diabetes-tsv #<<DIABETES
 AGE	SEX	BMI	BP	S1	S2	S3	S4	S5	S6	Y
@@ -531,9 +531,7 @@ DIABETES
     (for ([v (in-list (take row ncol))] [j (in-naturals)])
       (f32vector-set! features (+ (* i ncol) j) (exact->inexact v)))
     (f32vector-set! labels i (exact->inexact (last row))))
-  (define dm (dmatrix-create-from-mat features n ncol))
-  (dmatrix-set-float-info! dm "label" labels)
-  dm)
+  (make-dmatrix features #:nrow n #:ncol ncol #:labels labels))
 
 (define dtrain-dirty (rows->dmatrix corrupted-train-rows))
 (define dtest        (rows->dmatrix test-rows))
@@ -544,23 +542,21 @@ DIABETES
   (for/list ([row (in-list test-rows)]) (last row)))
 
 (define (train-and-score objective extra-params)
-  (define b (booster-create (list dtrain-dirty)))
-  (booster-set-param! b "objective" objective)
-  (booster-set-param! b "max_depth" "4")
-  (booster-set-param! b "eta"       "0.1")
-  (booster-set-param! b "verbosity" "0")
-  (for ([kv (in-list extra-params)])
-    (booster-set-param! b (car kv) (cdr kv)))
-  (for ([iter (in-range 100)])
-    (booster-update-one-iter! b iter dtrain-dirty))
-  (define preds (booster-predict b dtest))
+  (define b
+    (train dtrain-dirty
+           #:objective objective
+           #:max-depth 4
+           #:eta 0.1
+           #:verbosity 0
+           #:params extra-params
+           #:rounds 100))
+  (define preds (predict b dtest #:as 'f32vector))
   (define n (length test-labels-clean))
   (define-values (sse sae)
     (for/fold ([sse 0.0] [sae 0.0])
               ([y (in-list test-labels-clean)] [i (in-range n)])
       (define d (- (f32vector-ref preds i) y))
       (values (+ sse (* d d)) (+ sae (abs d)))))
-  (booster-free! b)
   (values (/ sse n) (/ sae n)))
 
 (define-values (sq-mse  sq-mae)  (train-and-score "reg:squarederror"    '()))
@@ -615,6 +611,3 @@ DIABETES
         [(<= l1-mse sq-mse) "L1"]
         [else "squared error"]))
 (printf "\nlowest test MSE under outlier-corrupted training: ~a\n" winner-mse)
-
-(dmatrix-free! dtrain-dirty)
-(dmatrix-free! dtest)

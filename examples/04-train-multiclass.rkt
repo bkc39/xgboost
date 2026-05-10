@@ -14,7 +14,7 @@
 
 (require ffi/vector
          racket/format
-         xgboost/ffi)
+         xgboost)
 
 ;; Feature layout: 18 rows x 2 cols, 6 rows per class.  Centers are
 ;; (0,0), (6,0), (3,6); each cluster is a tight square around its center.
@@ -35,28 +35,26 @@
 (define ncol 2)
 (define nclass 3)
 
-(define dtrain (dmatrix-create-from-mat features nrow ncol))
-(dmatrix-set-float-info! dtrain "label" labels)
+(define dtrain
+  (make-dmatrix features #:nrow nrow #:ncol ncol #:labels labels))
 
 (printf "training data:\n")
 (dmatrix-show dtrain)
 (newline)
 
 (define (train-booster objective)
-  (define b (booster-create (list dtrain)))
-  (booster-set-param! b "objective" objective)
-  (booster-set-param! b "num_class" (number->string nclass))
-  (booster-set-param! b "max_depth" "3")
-  (booster-set-param! b "eta"       "0.3")
-  (booster-set-param! b "verbosity" "0")
-  (for ([iter (in-range 30)])
-    (booster-update-one-iter! b iter dtrain))
-  b)
+  (train dtrain
+         #:objective objective
+         #:num-class nclass
+         #:max-depth 3
+         #:eta 0.3
+         #:verbosity 0
+         #:rounds 30))
 
 ;; ----- softprob: nrow * nclass probabilities ----------------------------
 
 (define softprob-booster (train-booster "multi:softprob"))
-(define probs (booster-predict softprob-booster dtrain))
+(define probs (predict softprob-booster dtrain #:as 'f32vector))
 
 (printf "softprob output: ~a floats (expected ~a = nrow * nclass)\n"
         (f32vector-length probs) (* nrow nclass))
@@ -99,7 +97,7 @@
 ;; ----- softmax: nrow predicted class indices ----------------------------
 
 (define softmax-booster (train-booster "multi:softmax"))
-(define preds (booster-predict softmax-booster dtrain))
+(define preds (predict softmax-booster dtrain #:as 'f32vector))
 
 (printf "\nsoftmax output: ~a floats (expected ~a = nrow)\n"
         (f32vector-length preds) nrow)
@@ -110,7 +108,3 @@
     (define truth (inexact->exact (f32vector-ref labels i)))
     (if (= pred truth) 1 0)))
 (printf "softmax accuracy: ~a/~a\n" n-correct-softmax nrow)
-
-(booster-free! softprob-booster)
-(booster-free! softmax-booster)
-(dmatrix-free! dtrain)

@@ -24,7 +24,7 @@
          racket/format
          racket/list
          racket/string
-         xgboost/ffi)
+         xgboost)
 
 (define diabetes-tsv #<<DIABETES
 AGE	SEX	BMI	BP	S1	S2	S3	S4	S5	S6	Y
@@ -501,9 +501,7 @@ DIABETES
     (for ([v (in-list (take row ncol))] [j (in-naturals)])
       (f32vector-set! features (+ (* i ncol) j) (exact->inexact v)))
     (f32vector-set! labels i (exact->inexact (last row))))
-  (define dm (dmatrix-create-from-mat features n ncol))
-  (dmatrix-set-float-info! dm "label" labels)
-  dm)
+  (make-dmatrix features #:nrow n #:ncol ncol #:labels labels))
 
 (define dtrain (rows->dmatrix train-rows))
 (define dtest  (rows->dmatrix test-rows))
@@ -518,22 +516,21 @@ DIABETES
 (define quantile-alpha-str "(0.1,0.5,0.9)")
 (define n-q (length quantile-alphas))
 
-(define b (booster-create (list dtrain)))
-(booster-set-param! b "objective"      "reg:quantileerror")
-(booster-set-param! b "quantile_alpha" quantile-alpha-str)
-;; Quantile loss requires `tree_method=hist` per XGBoost docs.
-(booster-set-param! b "tree_method"    "hist")
-(booster-set-param! b "max_depth"      "4")
-(booster-set-param! b "eta"            "0.1")
-(booster-set-param! b "verbosity"      "0")
-
 (define rounds 100)
-(for ([iter (in-range rounds)])
-  (booster-update-one-iter! b iter dtrain))
+(define b
+  (train dtrain
+         #:objective "reg:quantileerror"
+         #:params (list (cons "quantile_alpha" quantile-alpha-str)
+                        ;; Quantile loss requires `tree_method=hist`.
+                        (cons "tree_method"    "hist"))
+         #:max-depth 4
+         #:eta 0.1
+         #:verbosity 0
+         #:rounds rounds))
 
 ;; ----- Predict; output is nrow * n-q in row-major order ----------------
 
-(define preds (booster-predict b dtest))
+(define preds (predict b dtest #:as 'f32vector))
 (define n-test (length test-rows))
 
 (printf "\npredict output: ~a floats (expected ~a = nrow * n_quantiles)\n"
@@ -592,7 +589,3 @@ DIABETES
      n-test))
 (printf "\nmean (p90 - p10) width: ~a\n"
         (~r mean-band-width #:precision '(= 1)))
-
-(booster-free! b)
-(dmatrix-free! dtrain)
-(dmatrix-free! dtest)

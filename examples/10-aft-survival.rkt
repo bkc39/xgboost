@@ -30,7 +30,7 @@
          racket/format
          racket/list
          racket/string
-         xgboost/ffi)
+         xgboost)
 
 (define veteran-csv #<<VETERAN
 rownames,trt,celltype,time,status,karno,diagtime,age,prior
@@ -248,9 +248,9 @@ VETERAN
       (f32vector-set! features (+ (* i ncol) j) (exact->inexact v)))
     (f32vector-set! lower i (ex-lower x))
     (f32vector-set! upper i (ex-upper x)))
-  (define dm (dmatrix-create-from-mat features n ncol))
-  (dmatrix-set-float-info! dm "label_lower_bound" lower)
-  (dmatrix-set-float-info! dm "label_upper_bound" upper)
+  (define dm (make-dmatrix features #:nrow n #:ncol ncol))
+  (dmatrix-set-label-lower-bound! dm lower)
+  (dmatrix-set-label-upper-bound! dm upper)
   dm)
 
 (define dtrain (dataset->dmatrix train-set))
@@ -258,17 +258,20 @@ VETERAN
 
 ;; ----- Train -----------------------------------------------------------
 
-(define b (booster-create (list dtrain)))
-(booster-set-param! b "objective"                    "survival:aft")
-(booster-set-param! b "eval_metric"                  "aft-nloglik")
-(booster-set-param! b "aft_loss_distribution"        "normal")
-(booster-set-param! b "aft_loss_distribution_scale" "1.20")
-(booster-set-param! b "tree_method"                  "hist")
-(booster-set-param! b "max_depth"                    "3")
-(booster-set-param! b "eta"                          "0.05")
-(booster-set-param! b "verbosity"                    "0")
-
 (define rounds 100)
+(define b
+  (train dtrain
+         #:evals (list (cons "test" dtest))
+         #:objective "survival:aft"
+         #:eval-metric "aft-nloglik"
+         #:params '(("aft_loss_distribution"       . "normal")
+                    ("aft_loss_distribution_scale" . "1.20")
+                    ("tree_method"                 . "hist"))
+         #:max-depth 3
+         #:eta 0.05
+         #:verbosity 0
+         #:rounds 0))
+
 (define eval-set (list (cons "train" dtrain) (cons "test" dtest)))
 
 (printf "\ntraining (~a rounds, watching aft-nloglik):\n" rounds)
@@ -279,7 +282,7 @@ VETERAN
 (for ([iter (in-range rounds)])
   (booster-update-one-iter! b iter dtrain)
   (when (or (< iter 5) (zero? (modulo (+ iter 1) 25)))
-    (define m (parse-eval-line (booster-eval-one-iter b iter eval-set)))
+    (define m (parse-eval-line (eval-one-iter b iter eval-set)))
     (printf "  ~a  ~a  ~a\n"
             (~a iter #:width 4)
             (~r (hash-ref m "train-aft-nloglik")
@@ -289,7 +292,7 @@ VETERAN
 
 ;; ----- Predict + display -----------------------------------------------
 
-(define preds (booster-predict b dtest))
+(define preds (predict b dtest #:as 'f32vector))
 (define test-list test-set)
 (define n-test (length test-list))
 
@@ -340,7 +343,3 @@ VETERAN
   (printf "  MAE on ~a uncensored test rows: ~a days\n"
           (length uncensored)
           (~r mae #:precision '(= 1))))
-
-(booster-free! b)
-(dmatrix-free! dtrain)
-(dmatrix-free! dtest)

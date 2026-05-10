@@ -30,7 +30,7 @@
          racket/format
          racket/list
          racket/string
-         xgboost/ffi)
+         xgboost)
 
 (define bike-csv #<<BIKES
 season,yr,mnth,holiday,weekday,workingday,weathersit,temp,atemp,hum,windspeed,cnt
@@ -797,24 +797,20 @@ BIKES
     (for ([v (in-list (take row ncol))] [j (in-naturals)])
       (f32vector-set! features (+ (* i ncol) j) (exact->inexact v)))
     (f32vector-set! labels i (exact->inexact (last row))))
-  (define dm (dmatrix-create-from-mat features n ncol))
-  (dmatrix-set-float-info! dm "label" labels)
-  dm)
+  (make-dmatrix features #:nrow n #:ncol ncol #:labels labels))
 
 (define dtrain (rows->dmatrix train-rows))
 (define dtest  (rows->dmatrix test-rows))
 
 (define (train-with objective extra-params)
-  (define b (booster-create (list dtrain)))
-  (booster-set-param! b "objective" objective)
-  (booster-set-param! b "max_depth" "5")
-  (booster-set-param! b "eta"       "0.1")
-  (booster-set-param! b "verbosity" "0")
-  (for ([kv (in-list extra-params)])
-    (booster-set-param! b (car kv) (cdr kv)))
-  (for ([iter (in-range 200)])
-    (booster-update-one-iter! b iter dtrain))
-  b)
+  (train dtrain
+         #:evals (list (cons "test" dtest))
+         #:objective objective
+         #:max-depth 5
+         #:eta 0.1
+         #:verbosity 0
+         #:params extra-params
+         #:rounds 200))
 
 (define poisson  (train-with "count:poisson"
                              '(("max_delta_step" . "0.7"))))
@@ -822,16 +818,16 @@ BIKES
 
 (printf "\nfinal eval for Poisson model:\n")
 (define final-line
-  (booster-eval-one-iter poisson 199
-                          (list (cons "train" dtrain)
-                                (cons "test"  dtest))))
+  (eval-one-iter poisson 199
+                 (list (cons "train" dtrain)
+                       (cons "test"  dtest))))
 (printf "  ~a\n" final-line)
 (define final-metrics (parse-eval-line final-line))
 (for ([(k v) (in-hash final-metrics)])
   (printf "    ~a = ~a\n" k (~r v #:precision '(= 4))))
 
-(define poisson-preds  (booster-predict poisson  dtest))
-(define gaussian-preds (booster-predict gaussian dtest))
+(define poisson-preds  (predict poisson  dtest #:as 'f32vector))
+(define gaussian-preds (predict gaussian dtest #:as 'f32vector))
 (define test-actuals
   (for/list ([row (in-list test-rows)]) (last row)))
 
@@ -889,8 +885,3 @@ BIKES
           (fmt y)
           (fmt (f32vector-ref poisson-preds i))
           (fmt (f32vector-ref gaussian-preds i))))
-
-(booster-free! poisson)
-(booster-free! gaussian)
-(dmatrix-free! dtrain)
-(dmatrix-free! dtest)

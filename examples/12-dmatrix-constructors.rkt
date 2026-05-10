@@ -3,7 +3,7 @@
 (require ffi/vector
          racket/file
          racket/list
-         xgboost/ffi)
+         xgboost)
 
 (provide run-example)
 
@@ -33,8 +33,8 @@
                 (same-cell? expected-cell got-cell))))))
 
 (define (matrix-summary dm)
-  (hash 'rows (dmatrix-nrow dm)
-        'cols (dmatrix-ncol dm)
+  (hash 'rows (dmatrix-rows dm)
+        'cols (dmatrix-cols dm)
         'values (dmatrix->list dm)))
 
 (define (make-libsvm-dmatrix)
@@ -47,56 +47,46 @@
           (displayln "0 0:1 1:2 2:3" out)
           (displayln "1 0:4 1:5 2:6" out))
         #:exists 'truncate)
-      (dmatrix-create-from-uri
-       (format "{\"uri\":\"~a?format=libsvm\",\"silent\":1}"
-               (path->string tmp))))
+      (make-dmatrix-from-uri tmp #:format "libsvm"))
     (lambda ()
       (when (file-exists? tmp)
         (delete-file tmp)))))
 
 (define (run-example)
   (define dense
-    (dmatrix-create-from-dense
+    (make-dmatrix
      (f32vector 1.0 2.0 3.0
                 4.0 5.0 6.0)
-     2
-     3
-     -1.0))
+     #:nrow 2
+     #:ncol 3
+     #:missing -1.0))
   (define csr
-    (dmatrix-create-from-csr
+    (make-dmatrix-from-csr
      (u64vector 0 2 4)
      (u32vector 0 2 1 2)
      (f32vector 1.0 3.0 5.0 6.0)
      3
      -1.0))
   (define csc
-    (dmatrix-create-from-csc
+    (make-dmatrix-from-csc
      (u64vector 0 1 2 4)
      (u32vector 0 1 0 1)
      (f32vector 1.0 5.0 3.0 6.0)
      2
      -1.0))
   (define columnar
-    (dmatrix-create-from-columnar
+    (make-dmatrix-from-columnar
      (list (f32vector 1.0 4.0)
            (f32vector 2.0 5.0)
            (f32vector 3.0 6.0))
      -1.0))
   (define libsvm (make-libsvm-dmatrix))
 
-  (define result
-    (hash 'dense (matrix-summary dense)
-          'csr (matrix-summary csr)
-          'csc (matrix-summary csc)
-          'columnar (matrix-summary columnar)
-          'libsvm (matrix-summary libsvm)))
-
-  (dmatrix-free! dense)
-  (dmatrix-free! csr)
-  (dmatrix-free! csc)
-  (dmatrix-free! columnar)
-  (dmatrix-free! libsvm)
-  result)
+  (hash 'dense (matrix-summary dense)
+        'csr (matrix-summary csr)
+        'csc (matrix-summary csc)
+        'columnar (matrix-summary columnar)
+        'libsvm (matrix-summary libsvm)))
 
 (module+ main
   (define result (run-example))

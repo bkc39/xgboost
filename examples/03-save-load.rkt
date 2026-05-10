@@ -10,7 +10,7 @@
 (require ffi/vector
          racket/file
          racket/format
-         xgboost/ffi)
+         xgboost)
 
 (define features
   (f32vector 1.0 2.0 0.5
@@ -24,46 +24,42 @@
 
 (define labels (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0))
 
-(define dtrain (dmatrix-create-from-mat features 8 3))
-(dmatrix-set-float-info! dtrain "label" labels)
+(define dtrain
+  (make-dmatrix features #:nrow 8 #:ncol 3 #:labels labels))
 
-(define booster (booster-create (list dtrain)))
-(booster-set-param! booster "objective" "reg:squarederror")
-(booster-set-param! booster "max_depth" "3")
-(booster-set-param! booster "eta"       "0.1")
-(booster-set-param! booster "verbosity" "0")
-(for ([iter (in-range 50)])
-  (booster-update-one-iter! booster iter dtrain))
+(define booster
+  (train dtrain
+         #:objective "reg:squarederror"
+         #:max-depth 3
+         #:eta 0.1
+         #:verbosity 0
+         #:rounds 50))
 
-(define baseline (booster-predict booster dtrain))
+(define baseline (predict booster dtrain #:as 'f32vector))
 
 ;; ----- File round-trip ---------------------------------------------------
 
 (define model-path (make-temporary-file "xgbrkt-~a.json"))
-(booster-save-model! booster model-path)
+(save-model booster model-path)
 (define file-bytes (file->bytes model-path))
 (printf "saved JSON model to ~a (~a bytes)\n"
         (path->string model-path) (bytes-length file-bytes))
 
-(define from-file (booster-create))
-(booster-load-model! from-file model-path)
-(define preds-file (booster-predict from-file dtrain))
+(define from-file (load-model model-path))
+(define preds-file (predict from-file dtrain #:as 'f32vector))
 
 ;; ----- Byte-buffer round-trip (UBJ + JSON) -------------------------------
 
-(define ubj-blob (booster-save-model-to-bytes booster))
-(define json-blob (booster-save-model-to-bytes booster #:format "json"))
+(define ubj-blob (save-model-to-bytes booster))
+(define json-blob (save-model-to-bytes booster #:format "json"))
 (printf "ubj  blob: ~a bytes\n" (bytes-length ubj-blob))
 (printf "json blob: ~a bytes\n" (bytes-length json-blob))
 
-(define from-ubj (booster-create))
-(booster-load-model-from-bytes! from-ubj ubj-blob)
+(define from-ubj (load-model-from-bytes ubj-blob))
+(define from-json (load-model-from-bytes json-blob))
 
-(define from-json (booster-create))
-(booster-load-model-from-bytes! from-json json-blob)
-
-(define preds-ubj  (booster-predict from-ubj  dtrain))
-(define preds-json (booster-predict from-json dtrain))
+(define preds-ubj  (predict from-ubj  dtrain #:as 'f32vector))
+(define preds-json (predict from-json dtrain #:as 'f32vector))
 
 ;; ----- Verify ------------------------------------------------------------
 
@@ -87,8 +83,3 @@
   (printf "  i=~a  ~a\n" i (fmt (f32vector-ref baseline i))))
 
 (delete-file model-path)
-(booster-free! booster)
-(booster-free! from-file)
-(booster-free! from-ubj)
-(booster-free! from-json)
-(dmatrix-free! dtrain)

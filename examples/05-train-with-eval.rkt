@@ -10,7 +10,7 @@
 
 (require ffi/vector
          racket/format
-         xgboost/ffi)
+         xgboost)
 
 ;; Two non-overlapping splits of an y ≈ 2*x0 + x1 - x2 dataset.
 
@@ -32,17 +32,22 @@
              0.5 0.5 0.5))
 (define eval-labels (f32vector 4.0 2.0 7.5 1.0))
 
-(define dtrain (dmatrix-create-from-mat train-features 8 3))
-(dmatrix-set-float-info! dtrain "label" train-labels)
+(define dtrain
+  (make-dmatrix train-features #:nrow 8 #:ncol 3 #:labels train-labels))
+(define deval
+  (make-dmatrix eval-features  #:nrow 4 #:ncol 3 #:labels eval-labels))
 
-(define deval (dmatrix-create-from-mat eval-features 4 3))
-(dmatrix-set-float-info! deval "label" eval-labels)
-
-(define booster (booster-create (list dtrain)))
-(booster-set-param! booster "objective" "reg:squarederror")
-(booster-set-param! booster "max_depth" "3")
-(booster-set-param! booster "eta"       "0.1")
-(booster-set-param! booster "verbosity" "0")
+;; Manual iteration so we can log eval metrics each round.  Bind both
+;; dtrain and deval into the booster cache up front so the GC keeps them
+;; alive through the loop.
+(define booster
+  (train dtrain
+         #:evals (list (cons "eval" deval))
+         #:objective "reg:squarederror"
+         #:max-depth 3
+         #:eta 0.1
+         #:verbosity 0
+         #:rounds 0))
 
 (define eval-set (list (cons "train" dtrain) (cons "eval" deval)))
 (define rounds 30)
@@ -56,19 +61,15 @@
 
 (for ([iter (in-range rounds)])
   (booster-update-one-iter! booster iter dtrain)
-  (define metrics (parse-eval-line (booster-eval-one-iter booster iter eval-set)))
+  (define metrics (parse-eval-line (eval-one-iter booster iter eval-set)))
   (printf "~a  ~a  ~a\n"
           (~a iter #:width 4)
           (fmt (hash-ref metrics "train-rmse"))
           (fmt (hash-ref metrics "eval-rmse"))))
 
 (define final
-  (parse-eval-line (booster-eval-one-iter booster (- rounds 1) eval-set)))
+  (parse-eval-line (eval-one-iter booster (- rounds 1) eval-set)))
 (printf "\nfinal train-rmse: ~a\n"
         (~r (hash-ref final "train-rmse") #:precision '(= 6)))
 (printf "final  eval-rmse: ~a\n"
         (~r (hash-ref final "eval-rmse")  #:precision '(= 6)))
-
-(booster-free! booster)
-(dmatrix-free! dtrain)
-(dmatrix-free! deval)

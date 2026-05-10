@@ -1,7 +1,7 @@
 #lang racket/base
 
 (require ffi/vector
-         xgboost/ffi)
+         xgboost)
 
 (provide run-example)
 
@@ -23,43 +23,41 @@
        (* d d))
      (f32vector-length labels)))
 
-(define (make-gradients preds)
+;; Squared-error gradient: grad = prediction - label, hess = 1.
+(define (squared-error preds _dtrain)
   (define n (f32vector-length preds))
   (define grad (make-f32vector n))
   (define hess (make-f32vector n 1.0))
   (for ([i (in-range n)])
-    ;; Squared-error objective: grad = prediction - label, hess = 1.
     (f32vector-set! grad i (- (f32vector-ref preds i)
                               (f32vector-ref labels i))))
   (values grad hess))
 
 (define (run-example)
-  (define dtrain (dmatrix-create-from-mat features 8 3 -1.0))
-  (dmatrix-set-float-info! dtrain "label" labels)
-  (define booster (booster-create (list dtrain)))
-  (booster-set-param! booster "max_depth" "3")
-  (booster-set-param! booster "eta" "0.2")
-  (booster-set-param! booster "verbosity" "0")
-
-  (define initial-preds (booster-predict booster dtrain #:output 'margin))
+  (define dtrain
+    (make-dmatrix features #:nrow 8 #:ncol 3 #:missing -1.0 #:labels labels))
+  ;; Zero-round booster bound to dtrain: same shape as the trained one,
+  ;; just no boosting steps applied yet.  Margin defaults to base_score.
+  (define baseline
+    (train dtrain #:max-depth 3 #:eta 0.2 #:verbosity 0 #:rounds 0))
+  (define initial-preds
+    (predict baseline dtrain #:output 'margin #:as 'f32vector))
   (define initial-mse (mse initial-preds))
 
-  (for ([iter (in-range 20)])
-    (define preds (booster-predict booster dtrain #:output 'margin))
-    (define-values (grad hess) (make-gradients preds))
-    (booster-train-one-iter! booster iter dtrain grad hess))
+  (define booster
+    (train dtrain
+           #:objective-fn squared-error
+           #:max-depth 3
+           #:eta 0.2
+           #:verbosity 0
+           #:rounds 20))
 
-  (define final-preds (booster-predict booster dtrain))
+  (define final-preds (predict booster dtrain #:as 'f32vector))
   (define final-mse (mse final-preds))
-  (define result
-    (hash 'prediction-count (f32vector-length final-preds)
-          'initial-mse initial-mse
-          'final-mse final-mse
-          'improved? (< final-mse initial-mse)))
-
-  (booster-free! booster)
-  (dmatrix-free! dtrain)
-  result)
+  (hash 'prediction-count (f32vector-length final-preds)
+        'initial-mse initial-mse
+        'final-mse final-mse
+        'improved? (< final-mse initial-mse)))
 
 (module+ main
   (define result (run-example))

@@ -21,7 +21,7 @@
 (require ffi/vector
          racket/format
          racket/string
-         xgboost/ffi)
+         xgboost)
 
 (define iris-csv #<<IRIS-CSV
 5.1,3.5,1.4,0.2,Iris-setosa
@@ -223,22 +223,24 @@ IRIS-CSV
     (for ([v (in-list (car row))] [j (in-naturals)])
       (f32vector-set! features (+ (* i ncol) j) (exact->inexact v)))
     (f32vector-set! labels i (exact->inexact (cdr row))))
-  (define dm (dmatrix-create-from-mat features n ncol))
-  (dmatrix-set-float-info! dm "label" labels)
-  (values dm labels))
+  (values (make-dmatrix features #:nrow n #:ncol ncol #:labels labels)
+          labels))
 
 (define-values (dtrain train-labels) (rows->dmatrix train-rows))
 (define-values (dtest  test-labels)  (rows->dmatrix test-rows))
 
 ;; ----- Train ------------------------------------------------------------
 
-(define booster (booster-create (list dtrain)))
-(booster-set-param! booster "objective"   "multi:softprob")
-(booster-set-param! booster "num_class"   "3")
-(booster-set-param! booster "eval_metric" "mlogloss")
-(booster-set-param! booster "max_depth"   "4")
-(booster-set-param! booster "eta"         "0.3")
-(booster-set-param! booster "verbosity"   "0")
+(define booster
+  (train dtrain
+         #:evals (list (cons "test" dtest))
+         #:objective "multi:softprob"
+         #:num-class 3
+         #:eval-metric "mlogloss"
+         #:max-depth 4
+         #:eta 0.3
+         #:verbosity 0
+         #:rounds 0))
 
 (define rounds 50)
 (define eval-set (list (cons "train" dtrain) (cons "test" dtest)))
@@ -255,7 +257,7 @@ IRIS-CSV
 (for ([iter (in-range rounds)])
   (booster-update-one-iter! booster iter dtrain)
   (when (log-iter? iter)
-    (define m (parse-eval-line (booster-eval-one-iter booster iter eval-set)))
+    (define m (parse-eval-line (eval-one-iter booster iter eval-set)))
     (printf "  ~a  ~a  ~a\n"
             (~a iter #:width 4)
             (~r (hash-ref m "train-mlogloss") #:precision '(= 4) #:min-width 16)
@@ -264,7 +266,7 @@ IRIS-CSV
 ;; ----- Evaluate on the held-out test set --------------------------------
 
 (define n-test (length test-rows))
-(define probs (booster-predict booster dtest))
+(define probs (predict booster dtest #:as 'f32vector))
 
 (define preds
   (for/list ([i (in-range n-test)])
@@ -302,7 +304,3 @@ IRIS-CSV
           (~a (vector-ref confusion (+ (* truth 3) 0)) #:width 10 #:align 'right)
           (~a (vector-ref confusion (+ (* truth 3) 1)) #:width 10 #:align 'right)
           (~a (vector-ref confusion (+ (* truth 3) 2)) #:width 10 #:align 'right)))
-
-(booster-free! booster)
-(dmatrix-free! dtrain)
-(dmatrix-free! dtest)
