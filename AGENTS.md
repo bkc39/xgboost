@@ -67,6 +67,58 @@ the default package check.
 
 To force re-provisioning of the dev-shell Racket user scope, remove `.racket-user/`.
 
+## End-to-End Testing
+
+### Nix path (CI-equivalent)
+
+```bash
+nix build          # builds cpp, installs pkg, runs raco test + examples
+```
+
+### raco catalog simulation (pre-submission check)
+
+This reproduces what the Racket package catalog does: fresh install from
+candidates, no Nix environment, no XGBOOST_NATIVE_LIB_PATH.
+
+```bash
+# Start from a clean slate inside nix develop (provides racket)
+nix develop --command bash -c "
+  raco pkg remove xgboost 2>/dev/null || true
+  rm -f xgboost/native-libs/libxgbcompat.* \
+        xgboost/native-libs/libxgboost.*   \
+        xgboost/native-libs/libgomp.so.1
+  raco pkg install --name xgboost ./xgboost
+  raco test xgboost/
+  raco test \
+    examples/11-global-apis.rkt \
+    examples/12-dmatrix-constructors.rkt \
+    examples/13-high-level-root-api.rkt \
+    examples/14-dmatrix-metadata.rkt \
+    examples/15-dmatrix-slicing-binary.rkt \
+    examples/16-quantile-cuts.rkt \
+    examples/17-booster-lifecycle-config.rkt \
+    examples/18-booster-attrs.rkt \
+    examples/19-booster-dumps-feature-scores.rkt \
+    examples/20-inplace-predict-dense.rkt \
+    examples/21-inplace-predict-csr.rkt \
+    examples/22-inplace-predict-columnar.rkt \
+    examples/23-custom-objective.rkt
+"
+```
+
+The pre-installer reads from `native-libs/candidates/<platform>/` and copies
+the `.so` files into `native-libs/` — this is the path that `raco pkg install`
+from the catalog would follow. Tests must pass with no Nix store paths on
+`LD_LIBRARY_PATH`.
+
+### CUDA examples (requires physical NVIDIA GPU)
+
+```bash
+nix develop .#cuda
+racket examples/24-cuda-regression.rkt
+racket examples/25-cuda-classification.rkt
+```
+
 ## Architecture
 
 ### C++

@@ -19,14 +19,18 @@
        (pair? (filter (lambda (f) (regexp-match? pattern (path->string f)))
                       (directory-list dir)))))
 
-; On Linux prefer a CUDA build if one was staged, then fall back to CPU.
+; On x86_64 Linux prefer a CUDA build if staged, then fall back to CPU.
+; On aarch64 Linux use the dedicated cross-compiled candidate.
 (define (candidate-dirs this-collection-path)
   (define base (build-path this-collection-path "native-libs" "candidates"))
   (define platform-dirs
     (case (system-type 'os)
       [(macosx) '("darwin")]
-      [(unix)   '("linux-cuda" "linux-cpu")]
-      [else     '()]))
+      [(unix)
+       (if (regexp-match? #rx"aarch64" (path->string (system-library-subpath #f)))
+           '("linux-aarch64")
+           '("linux-cuda" "linux-cpu"))]
+      [else '()]))
   (map (lambda (d) (build-path base d)) platform-dirs))
 
 (define (pre-installer collections-top-path this-collection-path user-specific?)

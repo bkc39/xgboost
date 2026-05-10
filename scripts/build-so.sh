@@ -5,32 +5,43 @@ TARGET="${1:-}"
 
 usage() {
   echo "Usage: $0 <target>"
-  echo "  targets: linux | linux-cuda | darwin"
+  echo "  targets: linux | linux-cuda | linux-aarch64 | darwin"
   exit 1
 }
 
-# Bundle libxgboost alongside libxgbcompat so that raco pkg install works
-# without Nix on the target machine.  Sets RPATH=$ORIGIN so the loader
-# finds libxgboost.so next to libxgbcompat.so in the same directory.
+# Bundle libxgboost and libgomp alongside libxgbcompat so raco pkg install
+# works without Nix.  Sets RPATH=$ORIGIN on both libxgbcompat.so and
+# libxgboost.so; strips the Nix-store RUNPATH from libgomp.so.1 so its
+# remaining deps (libpthread, libm, libc) resolve via normal system paths.
 bundle_linux() {
   local dest="$1" flake_target="$2"
-  local xgboost_so=""
+  local xgboost_so="" libgomp_so=""
   while IFS= read -r p; do
-    if [ -f "$p/lib/libxgboost.so" ]; then
-      xgboost_so="$p/lib/libxgboost.so"
-      break
-    fi
+    [ -z "$xgboost_so" ] && [ -f "$p/lib/libxgboost.so" ] && xgboost_so="$p/lib/libxgboost.so"
+    [ -z "$libgomp_so" ] && [ -f "$p/lib/libgomp.so.1" ]  && libgomp_so="$p/lib/libgomp.so.1"
   done < <(nix path-info -r ".#${flake_target}" 2>/dev/null)
 
-  if [ -z "$xgboost_so" ]; then
-    echo "Warning: could not locate libxgboost.so in build closure — skipping bundle" >&2
-    return
-  fi
-  cp -v --no-preserve=mode "$xgboost_so" "$dest/"
   local patchelf
   patchelf=$(nix build --no-link --print-out-paths nixpkgs#patchelf 2>/dev/null)/bin/patchelf
+
+  if [ -n "$xgboost_so" ]; then
+    cp -v --no-preserve=mode "$xgboost_so" "$dest/"
+    "$patchelf" --set-rpath '$ORIGIN' "$dest/libxgboost.so"
+    echo "Bundled libxgboost.so with RPATH=\$ORIGIN"
+  else
+    echo "Warning: could not locate libxgboost.so in build closure" >&2
+  fi
+
+  if [ -n "$libgomp_so" ]; then
+    cp -v --no-preserve=mode "$libgomp_so" "$dest/"
+    "$patchelf" --remove-rpath "$dest/libgomp.so.1"
+    echo "Bundled libgomp.so.1 (Nix RPATH stripped)"
+  else
+    echo "Warning: could not locate libgomp.so.1 in build closure" >&2
+  fi
+
   "$patchelf" --set-rpath '$ORIGIN' "$dest/libxgbcompat.so"
-  echo "Bundled $(basename "$xgboost_so") and set RPATH=\$ORIGIN on libxgbcompat.so"
+  echo "Set RPATH=\$ORIGIN on libxgbcompat.so"
 }
 
 bundle_darwin() {
@@ -74,6 +85,21 @@ case "$TARGET" in
     cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/native-libs/candidates/linux-cuda/
     bundle_linux xgboost/native-libs/candidates/linux-cuda cpp-cuda
     echo "Done. CUDA .so installed to xgboost/native-libs/candidates/linux-cuda/"
+    ;;
+
+  linux-aarch64)
+    SYSTEM="$(uname -m)-linux"
+    if [ "$SYSTEM" != "x86_64-linux" ]; then
+      echo "Error: linux-aarch64 cross-build requires an x86_64-linux host (got $SYSTEM)" >&2
+      exit 1
+    fi
+    echo "Cross-compiling CPU-only libxgbcompat for aarch64-linux..."
+    nix build .#cpp-aarch64 --print-build-logs
+    mkdir -p xgboost/native-libs/candidates/linux-aarch64
+    cp -v --no-preserve=mode result/lib/libxgbcompat.* \
+      xgboost/native-libs/candidates/linux-aarch64/
+    bundle_linux xgboost/native-libs/candidates/linux-aarch64 cpp-aarch64
+    echo "Done. aarch64 .so installed to xgboost/native-libs/candidates/linux-aarch64/"
     ;;
 
   darwin)

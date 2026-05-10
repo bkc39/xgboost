@@ -119,6 +119,29 @@
             '';
           };
 
+          hasAarch64Cross = system == "x86_64-linux";
+          pkgsCross-aarch64 = import nixpkgs {
+            localSystem = system;
+            crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
+          };
+          cpp-aarch64 = if hasAarch64Cross then
+            pkgsCross-aarch64.stdenv.mkDerivation {
+              pname = "xgboost-cpp-aarch64";
+              inherit version;
+              src = ./cpp;
+              nativeBuildInputs = [
+                pkgsCross-aarch64.buildPackages.cmake
+                pkgsCross-aarch64.buildPackages.ninja
+              ];
+              buildInputs = [ pkgsCross-aarch64.xgboost ];
+              cmakeFlags = [
+                "-DBUILD_TESTING=OFF"
+                "-DCMAKE_CXX_STANDARD=26"
+              ];
+              doCheck = false;
+            }
+          else throw "cpp-aarch64 requires an x86_64-linux host";
+
           hasCuda = system == "x86_64-linux";
           pkgs-cuda = import nixpkgs {
             inherit system;
@@ -155,6 +178,8 @@
         {
           default = racket;
           inherit cpp racket copy-native-libs;
+        } // nixpkgs.lib.optionalAttrs hasAarch64Cross {
+          inherit cpp-aarch64;
         } // nixpkgs.lib.optionalAttrs hasCuda {
           inherit cpp-cuda copy-native-libs-cuda;
         });
