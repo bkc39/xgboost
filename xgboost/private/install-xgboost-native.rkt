@@ -32,9 +32,9 @@
 (define (pre-installer collections-top-path this-collection-path user-specific?)
   (define native-libs-dir (build-path this-collection-path "native-libs"))
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
-  ; Matches both libxgbcompat and libxgboost so bundled libxgboost is copied
-  ; from candidates alongside libxgbcompat.
-  (define pattern #rx"^lib(xgbcompat|xgboost)\\.")
+  ; Matches libxgbcompat, libxgboost, and libgomp so all bundled libs are
+  ; copied from candidates alongside libxgbcompat.
+  (define pattern #rx"^lib(xgbcompat|xgboost|gomp)\\.")
   (define installed-pattern #rx"^libxgbcompat\\.")
   (cond
     [cpp-lib-path
