@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require ffi/vector
+         json
          racket/contract
          racket/list
          racket/match
@@ -58,7 +59,8 @@
   [eval-one-iter (-> booster? exact-integer?
                      (listof (cons/c string? dmatrix?))
                      string?)]
-  [parse-eval-line (-> string? (hash/c string? real?))])
+  [parse-eval-line (-> string? (hash/c string? real?))]
+  [cuda-available? (-> boolean?)])
  dmatrix?
  booster?)
 
@@ -68,6 +70,10 @@
 (define xgboost-set-global-config! ffi:xgboost-set-global-config!)
 (define xgboost-register-log-callback! ffi:xgboost-register-log-callback!)
 (define parse-eval-line ffi:parse-eval-line)
+
+(define (cuda-available?)
+  (define info (string->jsexpr (ffi:xgboost-build-info)))
+  (if (hash-ref info 'USE_CUDA #f) #t #f))
 
 (define (sequence->f32vector who xs)
   (cond
@@ -262,6 +268,7 @@
   (check-regexp-match #rx"^\\{" (xgboost-build-info))
   (check-true (procedure? xgb-version/raw))
   (check-true (procedure? ffi:xgboost-version))
+  (check-pred boolean? (cuda-available?))
 
   (test-case "make-dmatrix accepts list rows and labels"
     (define dm (make-dmatrix '((1 2) (3 4) (5 6)) #:labels '(1 2 3)))
