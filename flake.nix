@@ -107,10 +107,13 @@
 
           copy-native-libs = pkgs.writeShellApplication {
             name = "copy-native-libs";
+            runtimeInputs = [ pkgs.patchelf ];
             text = ''
               DEST="$(pwd)/xgboost/native-libs"
               mkdir -p "$DEST"
               cp -v --no-preserve=mode ${cpp}/lib/libxgbcompat.* "$DEST/"
+              cp -v --no-preserve=mode ${pkgs.xgboost}/lib/libxgboost.so "$DEST/"
+              patchelf --set-rpath '$ORIGIN' "$DEST/libxgbcompat.so"
               echo "Native libraries copied to $DEST"
               ls -la "$DEST"
             '';
@@ -137,10 +140,13 @@
           };
           copy-native-libs-cuda = pkgs-cuda.writeShellApplication {
             name = "copy-native-libs-cuda";
+            runtimeInputs = [ pkgs-cuda.patchelf ];
             text = ''
               DEST="$(pwd)/xgboost/native-libs"
               mkdir -p "$DEST"
               cp -v --no-preserve=mode ${cpp-cuda}/lib/libxgbcompat.* "$DEST/"
+              cp -v --no-preserve=mode ${pkgs-cuda.xgboost}/lib/libxgboost.so "$DEST/"
+              patchelf --set-rpath '$ORIGIN' "$DEST/libxgbcompat.so"
               echo "CUDA native libraries copied to $DEST"
               ls -la "$DEST"
             '';
@@ -194,9 +200,10 @@
             shellHook = ''
               export XGBOOST_NATIVE_LIB_PATH="${cpp}"
               export PLTUSERHOME="$PWD/.racket-user"
-              deps_stamp="$PLTUSERHOME/.deps-installed-v1"
+              _rkt_ver=$(racket --version 2>&1 | grep -oP 'v\d+\.\d+' | tr -d 'v' | tr '.' '-')
+              deps_stamp="$PLTUSERHOME/.deps-installed-''${_rkt_ver}"
               if [ ! -f "$deps_stamp" ]; then
-                echo "Installing Racket package (link mode)..."
+                echo "Installing Racket package (link mode, Racket ''${_rkt_ver})..."
                 mkdir -p "$PLTUSERHOME"
                 mkdir -p ./xgboost/native-libs
                 cp ${cpp}/lib/libxgbcompat.* ./xgboost/native-libs/ 2>/dev/null || true
@@ -232,9 +239,10 @@
                 export LD_LIBRARY_PATH="$_nvidia_stub''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
                 unset _nvidia_stub
               fi
-              deps_stamp="$PLTUSERHOME/.deps-installed-v1"
+              _rkt_ver=$(racket --version 2>&1 | grep -oP 'v\d+\.\d+' | tr -d 'v' | tr '.' '-')
+              deps_stamp="$PLTUSERHOME/.deps-installed-''${_rkt_ver}"
               if [ ! -f "$deps_stamp" ]; then
-                echo "Installing Racket package (link mode, CUDA build)..."
+                echo "Installing Racket package (link mode, CUDA build, Racket ''${_rkt_ver})..."
                 mkdir -p "$PLTUSERHOME"
                 mkdir -p ./xgboost/native-libs
                 cp ${cpp-cuda}/lib/libxgbcompat.* ./xgboost/native-libs/ 2>/dev/null || true

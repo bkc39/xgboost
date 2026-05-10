@@ -3,4 +3,6 @@ result-*
 .racket-user/
 cpp/build/
 xgboost/native-libs/libxgbcompat.*
+xgboost/native-libs/libxgboost.*
+xgboost/native-libs/candidates/linux-cuda/
 **/compiled/

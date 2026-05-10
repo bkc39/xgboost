@@ -32,16 +32,19 @@
 (define (pre-installer collections-top-path this-collection-path user-specific?)
   (define native-libs-dir (build-path this-collection-path "native-libs"))
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
-  (define pattern #rx"^libxgbcompat\\.")
+  ; Matches both libxgbcompat and libxgboost so bundled libxgboost is copied
+  ; from candidates alongside libxgbcompat.
+  (define pattern #rx"^lib(xgbcompat|xgboost)\\.")
+  (define installed-pattern #rx"^libxgbcompat\\.")
   (cond
     [cpp-lib-path
      (copy-native-libs! native-libs-dir (build-path cpp-lib-path "lib") pattern)]
-    [(has-matching-files? native-libs-dir pattern)
+    [(has-matching-files? native-libs-dir installed-pattern)
      (void)]
     [else
      (define candidate
        (for/first ([d (in-list (candidate-dirs this-collection-path))]
-                   #:when (has-matching-files? d pattern))
+                   #:when (has-matching-files? d installed-pattern))
          d))
      (if candidate
          (copy-native-libs! native-libs-dir candidate pattern)
