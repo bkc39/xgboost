@@ -20,7 +20,7 @@
 (define (f32vector~= a b)
   (and (= (f32vector-length a) (f32vector-length b))
        (for/and ([i (in-range (f32vector-length a))])
-         (< (abs (- (f32vector-ref a i) (f32vector-ref b i))) 1e-7))))
+         (< (abs (- (f32vector-ref a i) (f32vector-ref b i))) 1e-8))))
 
 (define (make-trained)
   (define dtrain
