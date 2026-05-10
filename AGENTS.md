@@ -41,7 +41,8 @@ raco test \
   examples/20-inplace-predict-dense.rkt \
   examples/21-inplace-predict-csr.rkt \
   examples/22-inplace-predict-columnar.rkt \
-  examples/23-custom-objective.rkt
+  examples/23-custom-objective.rkt \
+  examples/26-booster-snapshot.rkt
 racket -l xgboost
 ```
 
@@ -103,7 +104,8 @@ nix develop --command bash -c "
     examples/20-inplace-predict-dense.rkt \
     examples/21-inplace-predict-csr.rkt \
     examples/22-inplace-predict-columnar.rkt \
-    examples/23-custom-objective.rkt
+    examples/23-custom-objective.rkt \
+    examples/26-booster-snapshot.rkt
 "
 ```
 

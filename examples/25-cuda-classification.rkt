@@ -68,8 +68,6 @@
           'accuracy          (/ correct n)
           'perfect?          (= correct n)))
 
-  (booster-free! booster)
-  (dmatrix-free! dtrain)
   result)
 
 (module+ main

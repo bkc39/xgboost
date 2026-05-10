@@ -37,7 +37,7 @@
 - [x] Add `scripts/build-so.sh` with `linux`, `linux-cuda`, `darwin` targets.
 - [x] Keep macOS as CPU-only.
 - [x] Add CUDA training examples: `examples/24-cuda-regression.rkt`, `examples/25-cuda-classification.rkt`.
-- [ ] Run CUDA examples on a physical GPU to validate end-to-end.
+- [x] Run CUDA examples on a physical GPU to validate end-to-end.
 - [ ] Add CI coverage for Linux and Darwin (see E2E Testing section in AGENTS.md for the exact commands to reproduce).
 
 ## Phase 5: Cleanup
