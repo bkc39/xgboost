@@ -13,10 +13,13 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-cpu
+            racket_arch: x64
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
+            racket_arch: arm64
           - os: macos-latest
             platform: darwin
+            racket_arch: arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -26,6 +29,7 @@ jobs:
       - uses: Bogdanp/setup-racket@v1.15
         with:
           version: "stable"
+          architecture: ${{ matrix.racket_arch }}
 
       - name: Portability check (Linux — ldd)
         if: runner.os == 'Linux'
