@@ -42,5 +42,5 @@
 - [ ] Add dedicated `exn:fail:xgboost` exception type.
 - [ ] Tighten DMatrix info-field and row-count validation in `xgboost/ffi`.
 - [x] Track high-level DMatrix lifetimes held by high-level Booster caches.
-- [ ] Track DMatrix lifetimes held by low-level `xgboost/ffi` Booster caches.
+- [x] Track DMatrix lifetimes held by low-level `xgboost/ffi` Booster caches.
 - [ ] Add ASan or Valgrind checks for the C++ shim.

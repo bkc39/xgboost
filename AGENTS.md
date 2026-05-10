@@ -4,8 +4,9 @@
 
 This repository provides Racket bindings for XGBoost. The Racket package is now the `xgboost` collection:
 
-- `(require xgboost)` is the high-level API for ordinary Racket data.
-- `(require xgboost/ffi)` is the contracted low-level wrapper layer.
+- `(require xgboost)` is the high-level API for ordinary Racket data. **Use this by default.** DMatrix and Booster are wrapper structs whose underlying handles are reclaimed by Racket's GC; user code never calls `*-free!`.
+- `(require xgboost/ffi)` is the contracted low-level wrapper layer. Returns raw cpointers tagged `_DMatrix` / `_Booster`. The raw layer wires `(allocator … (deallocator))` so handles are still GC-reclaimed; the safe surface no longer exports explicit-free helpers.
+- `(require (submod xgboost/ffi unsafe))` exposes `dmatrix-free!` and `booster-free!` for callers that need deterministic release (long-lived processes, very large in-flight matrices, migration from legacy explicit-free code). Both are idempotent: a second call hits the cpointer tag guard and raises `exn:fail:contract` instead of double-freeing.
 - `(require xgboost/ffi/raw)` is the direct C FFI layer.
 
 The native bridge is a C++ shared library, `libxgbcompat`, built with CMake and linked against `pkgs.xgboost`.
