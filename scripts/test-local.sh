@@ -49,7 +49,8 @@ echo "--- CPU examples ---"
   examples/20-inplace-predict-dense.rkt \
   examples/21-inplace-predict-csr.rkt \
   examples/22-inplace-predict-columnar.rkt \
-  examples/23-custom-objective.rkt
+  examples/23-custom-objective.rkt \
+  examples/26-booster-snapshot.rkt
 
 echo "--- CUDA examples (expect graceful skip on CPU build) ---"
 "$RACKET" examples/24-cuda-regression.rkt

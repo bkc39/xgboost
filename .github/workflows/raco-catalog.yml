@@ -1,0 +1,75 @@
+name: Raco catalog simulation
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-cpu
+            racket_arch: x64
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            racket_arch: arm64
+          - os: macos-latest
+            platform: darwin
+            racket_arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Bogdanp/setup-racket@v1.15
+        with:
+          version: "stable"
+          architecture: ${{ matrix.racket_arch }}
+
+      - name: Portability check (Linux — ldd)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATE_DIR="xgboost/native-libs/candidates/${{ matrix.platform }}"
+          for lib in "$CANDIDATE_DIR"/lib*.so*; do
+            [ -f "$lib" ] || continue
+            echo "=== $lib ===" && ldd "$lib" || true
+            if ldd "$lib" 2>&1 | grep -q '/nix/store/'; then
+              echo "ERROR: Nix store path in ldd output for $lib" >&2
+              exit 1
+            fi
+          done
+          echo "Portability check passed"
+
+      - name: Portability check (macOS — otool)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATE_DIR="xgboost/native-libs/candidates/${{ matrix.platform }}"
+          for lib in "$CANDIDATE_DIR"/lib*.dylib; do
+            [ -f "$lib" ] || continue
+            echo "=== $lib ===" && otool -L "$lib"
+            BAD=$(otool -L "$lib" | tail -n +2 | awk '{print $1}' \
+              | grep -v '^@loader_path/' \
+              | grep -v '^@rpath/' \
+              | grep -v '^/usr/lib/' \
+              | grep -v '^/System/' \
+              || true)
+            if [ -n "$BAD" ]; then
+              echo "ERROR: unexpected lib refs in $lib:" >&2
+              echo "$BAD" >&2
+              exit 1
+            fi
+          done
+          echo "Portability check passed"
+
+      - name: Install and test
+        shell: bash
+        run: bash scripts/test-local.sh
