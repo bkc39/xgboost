@@ -126,6 +126,16 @@ case "$TARGET" in
     cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/native-libs/candidates/linux-cuda/
     bundle_linux xgboost/native-libs/candidates/linux-cuda cpp-cuda
     echo "Done. CUDA .so installed to xgboost/native-libs/candidates/linux-cuda/"
+    # The CUDA libxgboost.so is ~140 MB, exceeding GitHub's 100 MB per-file
+    # limit, so the unpacked dir stays gitignored.  Ship a reproducible
+    # gzip tarball instead; the pre-installer extracts it at raco install.
+    echo "Packing linux-cuda candidate into reproducible tarball..."
+    tar --sort=name \
+        --mtime='2026-05-10 22:00:00 UTC' \
+        --owner=0 --group=0 --numeric-owner \
+        -czf xgboost/native-libs/candidates/linux-cuda.tar.gz \
+        -C xgboost/native-libs/candidates linux-cuda
+    echo "Tarball: $(ls -lh xgboost/native-libs/candidates/linux-cuda.tar.gz | awk '{print $5}')"
     ;;
 
   linux-aarch64)
