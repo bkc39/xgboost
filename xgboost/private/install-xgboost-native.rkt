@@ -2,7 +2,9 @@
 
 (provide pre-installer)
 
-(require racket/file)
+(require racket/file
+         file/gunzip
+         file/untar)
 
 (define (copy-native-libs! dest-dir source-dir pattern)
   (make-directory* dest-dir)
@@ -19,26 +21,42 @@
        (pair? (filter (lambda (f) (regexp-match? pattern (path->string f)))
                       (directory-list dir)))))
 
+;; Extract <candidate>.tar.gz into dest-dir.  The tarball has a single
+;; top-level directory (the candidate name); strip-count 1 places its
+;; contents directly into dest-dir.  Uses Racket's built-in gunzip/untar
+;; so the install does not depend on system `tar` or `gzip` binaries.
+(define (extract-tgz-to! tgz-path dest-dir)
+  (make-directory* dest-dir)
+  (define-values (gz-in gz-out) (make-pipe (* 4 1024 1024)))
+  (define gunzip-thread
+    (thread
+     (lambda ()
+       (call-with-input-file tgz-path
+         (lambda (in) (gunzip-through-ports in gz-out)))
+       (close-output-port gz-out))))
+  (untar gz-in #:dest dest-dir #:strip-count 1)
+  (thread-wait gunzip-thread))
+
 ; On x86_64 Linux prefer a CUDA build if staged, then fall back to CPU.
 ; On aarch64 Linux use the dedicated cross-compiled candidate.
-(define (candidate-dirs this-collection-path)
-  (define base (build-path this-collection-path "native-libs" "candidates"))
-  (define platform-dirs
-    (case (system-type 'os)
-      [(macosx) '("darwin")]
-      [(unix)
-       (if (regexp-match? #rx"aarch64" (path->string (system-library-subpath #f)))
-           '("linux-aarch64")
-           '("linux-cuda" "linux-cpu"))]
-      [else '()]))
-  (map (lambda (d) (build-path base d)) platform-dirs))
+(define (candidate-names)
+  (case (system-type 'os)
+    [(macosx) '("darwin")]
+    [(unix)
+     (if (regexp-match? #rx"aarch64" (path->string (system-library-subpath #f)))
+         '("linux-aarch64")
+         '("linux-cuda" "linux-cpu"))]
+    [else '()]))
 
 (define (pre-installer collections-top-path this-collection-path user-specific?)
   (define native-libs-dir (build-path this-collection-path "native-libs"))
+  (define candidates-base (build-path native-libs-dir "candidates"))
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
-  ; Matches libxgbcompat, libxgboost, and libgomp so all bundled libs are
-  ; copied from candidates alongside libxgbcompat.
-  (define pattern #rx"^lib(xgbcompat|xgboost|gomp|omp)\\.")
+  ; Matches libxgbcompat, libxgboost, libgomp, and libstdc++ so all bundled
+  ; libs are copied from candidates alongside libxgbcompat. libstdc++ is
+  ; bundled on Linux so libxgboost.so resolves GLIBCXX symbols via RPATH=$ORIGIN
+  ; on hosts whose system libstdc++ is too old (e.g. pkg-build.racket-lang.org).
+  (define pattern #rx"^lib(xgbcompat|xgboost|gomp|omp|stdc\\+\\+)\\.")
   (define installed-pattern #rx"^libxgbcompat\\.")
   (cond
     [cpp-lib-path
@@ -46,12 +64,28 @@
     [(has-matching-files? native-libs-dir installed-pattern)
      (void)]
     [else
-     (define candidate
-       (for/first ([d (in-list (candidate-dirs this-collection-path))]
-                   #:when (has-matching-files? d installed-pattern))
-         d))
-     (if candidate
-         (copy-native-libs! native-libs-dir candidate pattern)
-         (error 'pre-installer
-                "xgbcompat library not found. Either:\n  1. Run: ./scripts/build-so.sh linux|darwin, then raco pkg install\n  2. Set XGBOOST_NATIVE_LIB_PATH to a dir containing lib/libxgbcompat.*\n  3. Copy libxgbcompat.* manually to ~a"
-                (path->string native-libs-dir)))]))
+     ; For each candidate in priority order:
+     ;   - If the unpacked dir exists, copy matching files (fast path).
+     ;   - Else if <candidate>.tar.gz exists, extract it into the unpacked
+     ;     dir first, then copy.  This lets us ship oversized candidates
+     ;     (e.g. CUDA libxgboost.so > 100 MB) as a gzip tarball.
+     (define chosen
+       (for/first ([name (in-list (candidate-names))]
+                   #:when
+                   (let ([dir (build-path candidates-base name)]
+                         [tgz (build-path candidates-base (string-append name ".tar.gz"))])
+                     (or (has-matching-files? dir installed-pattern)
+                         (file-exists? tgz))))
+         name))
+     (cond
+       [(not chosen)
+        (error 'pre-installer
+               "xgbcompat library not found. Either:\n  1. Run: ./scripts/build-so.sh linux|darwin, then raco pkg install\n  2. Set XGBOOST_NATIVE_LIB_PATH to a dir containing lib/libxgbcompat.*\n  3. Copy libxgbcompat.* manually to ~a"
+               (path->string native-libs-dir))]
+       [else
+        (define dir (build-path candidates-base chosen))
+        (unless (has-matching-files? dir installed-pattern)
+          (extract-tgz-to!
+           (build-path candidates-base (string-append chosen ".tar.gz"))
+           dir))
+        (copy-native-libs! native-libs-dir dir pattern)])]))

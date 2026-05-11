@@ -9,16 +9,19 @@ usage() {
   exit 1
 }
 
-# Bundle libxgboost and libgomp alongside libxgbcompat so raco pkg install
-# works without Nix.  Sets RPATH=$ORIGIN on both libxgbcompat.so and
-# libxgboost.so; strips the Nix-store RUNPATH from libgomp.so.1 so its
-# remaining deps (libpthread, libm, libc) resolve via normal system paths.
+# Bundle libxgboost, libgomp, and libstdc++ alongside libxgbcompat so
+# raco pkg install works without Nix.  Sets RPATH=$ORIGIN on libxgbcompat.so
+# and libxgboost.so so the dynamic loader resolves libgomp/libstdc++ from
+# the install directory.  Bundling libstdc++.so.6 is needed because the
+# Racket package build container ships an older libstdc++ that may lack
+# GLIBCXX symbols required by the Nix-built libxgboost.so (>=3.4.31).
 bundle_linux() {
-  local dest="$1" flake_target="$2"
-  local xgboost_so="" libgomp_so=""
+  local dest="$1" flake_target="$2" target_arch="${3:-x86_64}"
+  local xgboost_so="" libgomp_so="" libstdcxx_so=""
   while IFS= read -r p; do
-    [ -z "$xgboost_so" ] && [ -f "$p/lib/libxgboost.so" ] && xgboost_so="$p/lib/libxgboost.so"
-    [ -z "$libgomp_so" ] && [ -f "$p/lib/libgomp.so.1" ]  && libgomp_so="$p/lib/libgomp.so.1"
+    [ -z "$xgboost_so" ]   && [ -f "$p/lib/libxgboost.so" ]   && xgboost_so="$p/lib/libxgboost.so"
+    [ -z "$libgomp_so" ]   && [ -f "$p/lib/libgomp.so.1" ]    && libgomp_so="$p/lib/libgomp.so.1"
+    [ -z "$libstdcxx_so" ] && [ -f "$p/lib/libstdc++.so.6" ]  && libstdcxx_so="$p/lib/libstdc++.so.6"
   done < <(nix path-info -r ".#${flake_target}" 2>/dev/null)
 
   local patchelf
@@ -40,8 +43,50 @@ bundle_linux() {
     echo "Warning: could not locate libgomp.so.1 in build closure" >&2
   fi
 
+  if [ -n "$libstdcxx_so" ]; then
+    cp -vL --no-preserve=mode "$libstdcxx_so" "$dest/libstdc++.so.6"
+    "$patchelf" --remove-rpath "$dest/libstdc++.so.6"
+    echo "Bundled libstdc++.so.6 (Nix RPATH stripped)"
+  else
+    echo "Warning: could not locate libstdc++.so.6 in build closure" >&2
+  fi
+
   "$patchelf" --set-rpath '$ORIGIN' "$dest/libxgbcompat.so"
   echo "Set RPATH=\$ORIGIN on libxgbcompat.so"
+
+  # polyfill-glibc only fully supports __isoc23_* downgrade on x86_64 today
+  # (the aarch64 backend segfaults on libxgboost.so).  Skip the step on
+  # aarch64: that candidate ships at GLIBC_2.38, which is fine because the
+  # only aarch64 surface we ship to is Ubuntu 24.04+ (glibc 2.39+).
+  if [ "$target_arch" = "x86_64" ]; then
+    polyfill_glibc_linux "$dest"
+  else
+    echo "Skipping glibc polyfill on $target_arch (binary keeps GLIBC_2.38 dep)"
+  fi
+}
+
+# Rewrite the bundled ELF binaries so they only require glibc symbols
+# available on the target version (Ubuntu 22.04 / pkg-build.racket-lang.org).
+# Without this, the Nix toolchain leaves references to GLIBC_2.38 symbols
+# (e.g. __isoc23_strtol) that don't exist on older systems.  polyfill-glibc
+# statically links small shims into the binaries to satisfy those references.
+# 2.35 is the lowest target reachable today; lowering further would require
+# resolving __libc_single_threaded@GLIBC_2.32.
+polyfill_glibc_linux() {
+  local dest="$1"
+  local polyfill
+  polyfill=$(nix build --no-link --print-out-paths .#polyfill-glibc 2>/dev/null)/bin/polyfill-glibc
+  if [ ! -x "$polyfill" ]; then
+    echo "Warning: polyfill-glibc not available, skipping glibc downgrade" >&2
+    return
+  fi
+  echo "Polyfilling bundled libs to require only glibc <= 2.35..."
+  for f in libxgboost.so libxgbcompat.so libgomp.so.1 libstdc++.so.6; do
+    if [ -f "$dest/$f" ]; then
+      "$polyfill" --target-glibc=2.35 "$dest/$f"
+      echo "  $f -> max glibc dep now: $(objdump -T "$dest/$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -V -u | tail -1)"
+    fi
+  done
 }
 
 bundle_darwin() {
@@ -115,6 +160,16 @@ case "$TARGET" in
     cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/native-libs/candidates/linux-cuda/
     bundle_linux xgboost/native-libs/candidates/linux-cuda cpp-cuda
     echo "Done. CUDA .so installed to xgboost/native-libs/candidates/linux-cuda/"
+    # The CUDA libxgboost.so is ~140 MB, exceeding GitHub's 100 MB per-file
+    # limit, so the unpacked dir stays gitignored.  Ship a reproducible
+    # gzip tarball instead; the pre-installer extracts it at raco install.
+    echo "Packing linux-cuda candidate into reproducible tarball..."
+    tar --sort=name \
+        --mtime='2026-05-10 22:00:00 UTC' \
+        --owner=0 --group=0 --numeric-owner \
+        -czf xgboost/native-libs/candidates/linux-cuda.tar.gz \
+        -C xgboost/native-libs/candidates linux-cuda
+    echo "Tarball: $(ls -lh xgboost/native-libs/candidates/linux-cuda.tar.gz | awk '{print $5}')"
     ;;
 
   linux-aarch64)
@@ -128,7 +183,7 @@ case "$TARGET" in
     mkdir -p xgboost/native-libs/candidates/linux-aarch64
     cp -v --no-preserve=mode result/lib/libxgbcompat.* \
       xgboost/native-libs/candidates/linux-aarch64/
-    bundle_linux xgboost/native-libs/candidates/linux-aarch64 cpp-aarch64
+    bundle_linux xgboost/native-libs/candidates/linux-aarch64 cpp-aarch64 aarch64
     echo "Done. aarch64 .so installed to xgboost/native-libs/candidates/linux-aarch64/"
     ;;
 

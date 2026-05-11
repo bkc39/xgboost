@@ -27,7 +27,8 @@ echo "--- clearing staged native libs ---"
 rm -f xgboost/native-libs/libxgbcompat.* \
       xgboost/native-libs/libxgboost.*   \
       xgboost/native-libs/libomp.*       \
-      xgboost/native-libs/libgomp.*
+      xgboost/native-libs/libgomp.*      \
+      xgboost/native-libs/libstdc++.*
 
 echo "--- installing from candidates ---"
 "$RACO" pkg install --name xgboost ./xgboost
