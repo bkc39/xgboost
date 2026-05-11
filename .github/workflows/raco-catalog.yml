@@ -14,6 +14,11 @@ jobs:
           - os: ubuntu-latest
             platform: linux-cpu
             racket_arch: x64
+          # Mirrors pkg-build.racket-lang.org's older libstdc++ so we catch
+          # GLIBCXX symbol-mismatch regressions before the catalog does.
+          - os: ubuntu-22.04
+            platform: linux-cpu
+            racket_arch: x64
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             racket_arch: arm64
@@ -45,6 +50,23 @@ jobs:
               exit 1
             fi
           done
+          # libxgboost.so and libxgbcompat.so must carry RUNPATH=$ORIGIN so
+          # the bundled libstdc++.so.6 / libgomp.so.1 resolve from the same
+          # directory at load time (on hosts with older system libstdc++).
+          for lib in "$CANDIDATE_DIR/libxgboost.so" "$CANDIDATE_DIR/libxgbcompat.so"; do
+            [ -f "$lib" ] || continue
+            if ! readelf -d "$lib" | grep -E 'R(UN)?PATH' | grep -q '\$ORIGIN'; then
+              echo "ERROR: $lib missing RUNPATH=\$ORIGIN" >&2
+              readelf -d "$lib" | grep -E 'R(UN)?PATH' || echo "  (no RPATH/RUNPATH entry)" >&2
+              exit 1
+            fi
+          done
+          # A bundled libstdc++.so.6 must be present so older hosts have a
+          # GLIBCXX symbol set compatible with libxgboost.so.
+          if [ ! -f "$CANDIDATE_DIR/libstdc++.so.6" ]; then
+            echo "ERROR: $CANDIDATE_DIR/libstdc++.so.6 not staged" >&2
+            exit 1
+          fi
           echo "Portability check passed"
 
       - name: Portability check (macOS — otool)

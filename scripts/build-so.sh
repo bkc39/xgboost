@@ -9,16 +9,19 @@ usage() {
   exit 1
 }
 
-# Bundle libxgboost and libgomp alongside libxgbcompat so raco pkg install
-# works without Nix.  Sets RPATH=$ORIGIN on both libxgbcompat.so and
-# libxgboost.so; strips the Nix-store RUNPATH from libgomp.so.1 so its
-# remaining deps (libpthread, libm, libc) resolve via normal system paths.
+# Bundle libxgboost, libgomp, and libstdc++ alongside libxgbcompat so
+# raco pkg install works without Nix.  Sets RPATH=$ORIGIN on libxgbcompat.so
+# and libxgboost.so so the dynamic loader resolves libgomp/libstdc++ from
+# the install directory.  Bundling libstdc++.so.6 is needed because the
+# Racket package build container ships an older libstdc++ that may lack
+# GLIBCXX symbols required by the Nix-built libxgboost.so (>=3.4.31).
 bundle_linux() {
   local dest="$1" flake_target="$2"
-  local xgboost_so="" libgomp_so=""
+  local xgboost_so="" libgomp_so="" libstdcxx_so=""
   while IFS= read -r p; do
-    [ -z "$xgboost_so" ] && [ -f "$p/lib/libxgboost.so" ] && xgboost_so="$p/lib/libxgboost.so"
-    [ -z "$libgomp_so" ] && [ -f "$p/lib/libgomp.so.1" ]  && libgomp_so="$p/lib/libgomp.so.1"
+    [ -z "$xgboost_so" ]   && [ -f "$p/lib/libxgboost.so" ]   && xgboost_so="$p/lib/libxgboost.so"
+    [ -z "$libgomp_so" ]   && [ -f "$p/lib/libgomp.so.1" ]    && libgomp_so="$p/lib/libgomp.so.1"
+    [ -z "$libstdcxx_so" ] && [ -f "$p/lib/libstdc++.so.6" ]  && libstdcxx_so="$p/lib/libstdc++.so.6"
   done < <(nix path-info -r ".#${flake_target}" 2>/dev/null)
 
   local patchelf
@@ -38,6 +41,14 @@ bundle_linux() {
     echo "Bundled libgomp.so.1 (Nix RPATH stripped)"
   else
     echo "Warning: could not locate libgomp.so.1 in build closure" >&2
+  fi
+
+  if [ -n "$libstdcxx_so" ]; then
+    cp -vL --no-preserve=mode "$libstdcxx_so" "$dest/libstdc++.so.6"
+    "$patchelf" --remove-rpath "$dest/libstdc++.so.6"
+    echo "Bundled libstdc++.so.6 (Nix RPATH stripped)"
+  else
+    echo "Warning: could not locate libstdc++.so.6 in build closure" >&2
   fi
 
   "$patchelf" --set-rpath '$ORIGIN' "$dest/libxgbcompat.so"

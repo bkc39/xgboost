@@ -36,9 +36,11 @@
 (define (pre-installer collections-top-path this-collection-path user-specific?)
   (define native-libs-dir (build-path this-collection-path "native-libs"))
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
-  ; Matches libxgbcompat, libxgboost, and libgomp so all bundled libs are
-  ; copied from candidates alongside libxgbcompat.
-  (define pattern #rx"^lib(xgbcompat|xgboost|gomp|omp)\\.")
+  ; Matches libxgbcompat, libxgboost, libgomp, and libstdc++ so all bundled
+  ; libs are copied from candidates alongside libxgbcompat. libstdc++ is
+  ; bundled on Linux so libxgboost.so resolves GLIBCXX symbols via RPATH=$ORIGIN
+  ; on hosts whose system libstdc++ is too old (e.g. pkg-build.racket-lang.org).
+  (define pattern #rx"^lib(xgbcompat|xgboost|gomp|omp|stdc\\+\\+)\\.")
   (define installed-pattern #rx"^libxgbcompat\\.")
   (cond
     [cpp-lib-path
