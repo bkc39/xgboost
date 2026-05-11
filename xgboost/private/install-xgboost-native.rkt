@@ -52,11 +52,16 @@
   (define native-libs-dir (build-path this-collection-path "native-libs"))
   (define candidates-base (build-path native-libs-dir "candidates"))
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))
-  ; Matches libxgbcompat, libxgboost, libgomp, and libstdc++ so all bundled
-  ; libs are copied from candidates alongside libxgbcompat. libstdc++ is
-  ; bundled on Linux so libxgboost.so resolves GLIBCXX symbols via RPATH=$ORIGIN
-  ; on hosts whose system libstdc++ is too old (e.g. pkg-build.racket-lang.org).
-  (define pattern #rx"^lib(xgbcompat|xgboost|gomp|omp|stdc\\+\\+)\\.")
+  ; Matches every bundled .so/.dylib copied alongside libxgbcompat:
+  ;   libxgbcompat - the C++ wrapper Racket FFI binds to
+  ;   libxgboost   - the upstream XGBoost runtime
+  ;   libgomp/libomp - OpenMP runtime used by libxgboost
+  ;   libstdc++    - bundled on Linux so libxgboost finds the GLIBCXX symbols
+  ;                  it was built against on hosts with an older system one
+  ;   libxgbshim   - tiny Linux glibc-compat shim (see scripts/glibc-shim.c)
+  ;                  that lets polyfill-glibc rewrite the libs to a glibc 2.17
+  ;                  baseline so pkg-build.racket-lang.org can load them
+  (define pattern #rx"^lib(xgbcompat|xgboost|gomp|omp|stdc\\+\\+|xgbshim)\\.")
   (define installed-pattern #rx"^libxgbcompat\\.")
   (cond
     [cpp-lib-path
