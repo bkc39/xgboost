@@ -1,4 +1,4 @@
-name: Nix build
+name: Nix checks
 
 on:
   push:
@@ -7,10 +7,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v22
       - uses: DeterminateSystems/magic-nix-cache-action@v13
-      - name: Build and test
-        run: nix build --print-build-logs
+      - name: Build, test, and lint
+        run: nix flake check --print-build-logs

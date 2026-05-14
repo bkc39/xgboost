@@ -57,6 +57,7 @@
 
             nativeBuildInputs = [
               pkgs.cmake
+              pkgs.clang-tools
               pkgs.ninja
             ];
 
@@ -67,7 +68,7 @@
 
             cmakeFlags = [
               "-DBUILD_TESTING=ON"
-              "-DCMAKE_CXX_STANDARD=26"
+              "-DCMAKE_CXX_STANDARD=20"
             ];
 
             doCheck = true;
@@ -75,6 +76,100 @@
               runHook preCheck
               ctest --output-on-failure
               runHook postCheck
+            '';
+          };
+
+          cpp-format = pkgs.stdenv.mkDerivation {
+            pname = "xgboost-cpp-format";
+            inherit version;
+            src = ./cpp;
+
+            nativeBuildInputs = [
+              pkgs.cmake
+              pkgs.clang-tools
+              pkgs.ninja
+            ];
+
+            buildInputs = [
+              pkgs.xgboost
+              pkgs.gtest
+            ];
+
+            cmakeFlags = [
+              "-DBUILD_TESTING=ON"
+              "-DCMAKE_CXX_STANDARD=20"
+            ];
+
+            buildPhase = ''
+              runHook preBuild
+              cmake --build . --target format-check
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+              touch $out
+              runHook postInstall
+            '';
+          };
+
+          cpp-tidy = pkgs.stdenv.mkDerivation {
+            pname = "xgboost-cpp-tidy";
+            inherit version;
+            src = ./cpp;
+
+            nativeBuildInputs = [
+              pkgs.cmake
+              pkgs.clang-tools
+              pkgs.ninja
+            ];
+
+            buildInputs = [
+              pkgs.xgboost
+              pkgs.gtest
+            ];
+
+            cmakeFlags = [
+              "-DBUILD_TESTING=ON"
+              "-DCMAKE_CXX_STANDARD=20"
+            ];
+
+            buildPhase = ''
+              runHook preBuild
+              cmake --build . --target tidy
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+              touch $out
+              runHook postInstall
+            '';
+          };
+
+          cpp-line-count = pkgs.stdenv.mkDerivation {
+            pname = "xgboost-cpp-line-count";
+            inherit version;
+            src = ./cpp;
+
+            dontConfigure = true;
+            dontBuild = true;
+
+            installPhase = ''
+              runHook preInstall
+              failed=0
+              while IFS= read -r file; do
+                lines=$(wc -l < "$file")
+                if [ "$lines" -gt 500 ]; then
+                  echo "ERROR: $file has $lines lines; limit is 500" >&2
+                  failed=1
+                fi
+              done < <(find . -type f \( -name '*.c' -o -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \))
+              if [ "$failed" -ne 0 ]; then
+                exit 1
+              fi
+              touch $out
+              runHook postInstall
             '';
           };
 
@@ -172,7 +267,7 @@
               buildInputs = [ pkgsCross-aarch64.xgboost ];
               cmakeFlags = [
                 "-DBUILD_TESTING=OFF"
-                "-DCMAKE_CXX_STANDARD=26"
+                "-DCMAKE_CXX_STANDARD=20"
               ];
               doCheck = false;
             }
@@ -189,7 +284,7 @@
             src = ./cpp;
             nativeBuildInputs = [ pkgs-cuda.cmake pkgs-cuda.ninja ];
             buildInputs = [ pkgs-cuda.xgboost pkgs-cuda.gtest ];
-            cmakeFlags = [ "-DBUILD_TESTING=ON" "-DCMAKE_CXX_STANDARD=26" ];
+            cmakeFlags = [ "-DBUILD_TESTING=ON" "-DCMAKE_CXX_STANDARD=20" ];
             doCheck = true;
             checkPhase = ''
               runHook preCheck
@@ -213,7 +308,9 @@
         in
         {
           default = racket;
-          inherit cpp racket copy-native-libs polyfill-glibc;
+          inherit cpp cpp-format cpp-line-count cpp-tidy racket copy-native-libs;
+        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          inherit polyfill-glibc;
         } // nixpkgs.lib.optionalAttrs hasAarch64Cross {
           inherit cpp-aarch64;
         } // nixpkgs.lib.optionalAttrs hasCuda {
@@ -233,7 +330,7 @@
       });
 
       checks = forAllSystems (system: {
-        inherit (self.packages.${system}) cpp racket;
+        inherit (self.packages.${system}) cpp cpp-format cpp-line-count cpp-tidy racket;
       });
 
       devShells = forAllSystems (system:
@@ -251,6 +348,7 @@
           default = pkgs.mkShell {
             buildInputs = [
               pkgs.cmake
+              pkgs.clang-tools
               pkgs.gtest
               pkgs.ninja
               pkgs.racket
@@ -280,6 +378,7 @@
           cuda = pkgs-cuda.mkShell {
             buildInputs = [
               pkgs-cuda.cmake
+              pkgs-cuda.clang-tools
               pkgs-cuda.gtest
               pkgs-cuda.ninja
               pkgs-cuda.racket
