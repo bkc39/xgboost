@@ -1,0 +1,27 @@
+// Rename rules applied to the bundled .so files so polyfill-glibc can drop
+// their max glibc dep below 2.27 (the floor on pkg-build.racket-lang.org).
+//
+// polyfill-glibc handles the bulk of the downgrade automatically (pthread_*,
+// stat/fstat/lstat, dlopen family, etc.).  These four symbols are the ones
+// it doesn't know how to rewrite; we either redirect to an older glibc
+// version or to a definition in libxgbshim.so shipped alongside.
+
+// lgamma/lgammaf/lgammal @2.23 only removed the write to the signgam global.
+// Older default version is behaviorally equivalent for callers that don't
+// read signgam (xgboost doesn't).
+lgamma@GLIBC_2.23  lgamma@GLIBC_2.2.5
+lgammaf@GLIBC_2.23 lgammaf@GLIBC_2.2.5
+lgammal@GLIBC_2.23 lgammal@GLIBC_2.2.5
+
+// __libc_single_threaded is a uint8_t flag added in 2.32.  Provide our own
+// zero byte (value 0 forces the thread-safe path).
+__libc_single_threaded@GLIBC_2.32 libxgbshim.so::__libc_single_threaded
+
+// _Float128 conversions added in 2.26.  Pulled in by libstdc++ but not
+// exercised at runtime; stubbed in libxgbshim.so.
+strfromf128@GLIBC_2.26 libxgbshim.so::strfromf128
+strtof128@GLIBC_2.26  libxgbshim.so::strtof128
+
+// getentropy added in 2.25; used by libstdc++'s std::random_device, which
+// xgboost doesn't construct.  Stubbed in libxgbshim.so.
+getentropy@GLIBC_2.25 libxgbshim.so::getentropy

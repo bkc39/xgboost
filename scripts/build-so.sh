@@ -37,16 +37,18 @@ bundle_linux() {
 
   if [ -n "$libgomp_so" ]; then
     cp -v --no-preserve=mode "$libgomp_so" "$dest/"
-    "$patchelf" --remove-rpath "$dest/libgomp.so.1"
-    echo "Bundled libgomp.so.1 (Nix RPATH stripped)"
+    # RUNPATH=$ORIGIN so libgomp's NEEDED libxgbshim.so (added by polyfill)
+    # resolves from the same directory at load time.
+    "$patchelf" --set-rpath '$ORIGIN' "$dest/libgomp.so.1"
+    echo "Bundled libgomp.so.1 with RPATH=\$ORIGIN"
   else
     echo "Warning: could not locate libgomp.so.1 in build closure" >&2
   fi
 
   if [ -n "$libstdcxx_so" ]; then
     cp -vL --no-preserve=mode "$libstdcxx_so" "$dest/libstdc++.so.6"
-    "$patchelf" --remove-rpath "$dest/libstdc++.so.6"
-    echo "Bundled libstdc++.so.6 (Nix RPATH stripped)"
+    "$patchelf" --set-rpath '$ORIGIN' "$dest/libstdc++.so.6"
+    echo "Bundled libstdc++.so.6 with RPATH=\$ORIGIN"
   else
     echo "Warning: could not locate libstdc++.so.6 in build closure" >&2
   fi
@@ -59,31 +61,66 @@ bundle_linux() {
   # aarch64: that candidate ships at GLIBC_2.38, which is fine because the
   # only aarch64 surface we ship to is Ubuntu 24.04+ (glibc 2.39+).
   if [ "$target_arch" = "x86_64" ]; then
+    build_glibc_shim_linux "$dest"
     polyfill_glibc_linux "$dest"
   else
     echo "Skipping glibc polyfill on $target_arch (binary keeps GLIBC_2.38 dep)"
   fi
 }
 
+# Build libxgbshim.so from scripts/glibc-shim.c.  This tiny .so ships beside
+# the bundled libs and provides definitions that polyfill-glibc redirects the
+# binaries to (via scripts/glibc-renames.txt) — see that file's comments for
+# the specific symbols and rationale.  Linked against only libc baseline so
+# it itself depends on nothing newer than GLIBC_2.2.5.
+build_glibc_shim_linux() {
+  local dest="$1"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local cc_pkg
+  # nixpkgs#gcc yields multiple outputs (man, out); ask for the out one so
+  # the wrapper binary is in $cc_pkg/bin/gcc.
+  cc_pkg=$(nix build --no-link --print-out-paths 'nixpkgs#gcc^out' 2>/dev/null)
+  local cc="$cc_pkg/bin/gcc"
+  if [ ! -x "$cc" ]; then
+    echo "Warning: gcc not available; skipping libxgbshim.so build" >&2
+    return
+  fi
+  "$cc" -shared -fPIC -O2 \
+        -Wl,-soname,libxgbshim.so \
+        -o "$dest/libxgbshim.so" \
+        "$script_dir/glibc-shim.c"
+  echo "Built libxgbshim.so (glibc deps: $(objdump -T "$dest/libxgbshim.so" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -V -u | tr '\n' ' '))"
+}
+
 # Rewrite the bundled ELF binaries so they only require glibc symbols
-# available on the target version (Ubuntu 22.04 / pkg-build.racket-lang.org).
-# Without this, the Nix toolchain leaves references to GLIBC_2.38 symbols
-# (e.g. __isoc23_strtol) that don't exist on older systems.  polyfill-glibc
-# statically links small shims into the binaries to satisfy those references.
-# 2.35 is the lowest target reachable today; lowering further would require
-# resolving __libc_single_threaded@GLIBC_2.32.
+# available on the target version.  pkg-build.racket-lang.org runs on a
+# system with glibc < 2.27 (libm.so.6 there lacks the GLIBC_2.27 version
+# stamp added with the vectorised expf/logf), so 2.35 wasn't low enough.
+# We target 2.17 (CentOS 7 / manylinux2014 baseline) which covers every
+# Linux distro from the last decade.
+#
+# polyfill-glibc handles most of the downgrade on its own (pthread_*, stat,
+# dlopen family, __isoc23_*, etc.).  A handful of symbols it doesn't know
+# how to rewrite are redirected via scripts/glibc-renames.txt — see that
+# file for the per-symbol rationale.  Symbols routed to libxgbshim.so are
+# resolved at load time by the shim built in build_glibc_shim_linux.
 polyfill_glibc_linux() {
   local dest="$1"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local polyfill
   polyfill=$(nix build --no-link --print-out-paths .#polyfill-glibc 2>/dev/null)/bin/polyfill-glibc
   if [ ! -x "$polyfill" ]; then
     echo "Warning: polyfill-glibc not available, skipping glibc downgrade" >&2
     return
   fi
-  echo "Polyfilling bundled libs to require only glibc <= 2.35..."
+  local renames="$script_dir/glibc-renames.txt"
+  echo "Polyfilling bundled libs to require only glibc <= 2.17..."
   for f in libxgboost.so libxgbcompat.so libgomp.so.1 libstdc++.so.6; do
     if [ -f "$dest/$f" ]; then
-      "$polyfill" --target-glibc=2.35 "$dest/$f"
+      "$polyfill" --rename-dynamic-symbols="$renames" \
+                  --target-glibc=2.17 "$dest/$f"
       echo "  $f -> max glibc dep now: $(objdump -T "$dest/$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -V -u | tail -1)"
     fi
   done
