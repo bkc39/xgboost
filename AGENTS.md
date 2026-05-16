@@ -5,9 +5,9 @@
 This repository provides Racket bindings for XGBoost. The Racket package is now the `xgboost` collection:
 
 - `(require xgboost)` is the high-level API for ordinary Racket data. **Use this by default.** DMatrix and Booster are wrapper structs whose underlying handles are reclaimed by Racket's GC; user code never calls `*-free!`.
-- `(require xgboost/ffi)` is the contracted low-level wrapper layer. Returns raw cpointers tagged `_DMatrix` / `_Booster`. The raw layer wires `(allocator … (deallocator))` so handles are still GC-reclaimed; the safe surface no longer exports explicit-free helpers.
-- `(require (submod xgboost/ffi unsafe))` exposes `dmatrix-free!` and `booster-free!` for callers that need deterministic release (long-lived processes, very large in-flight matrices, migration from legacy explicit-free code). Both are idempotent: a second call hits the cpointer tag guard and raises `exn:fail:contract` instead of double-freeing.
-- `(require xgboost/ffi/raw)` is the direct C FFI layer.
+- `(require xgboost/foreign)` is the contracted low-level wrapper layer. Returns `dmatrix` / `booster` wrapper structs over cpointers tagged `_DMatrix` / `_Booster`. The raw layer wires `(allocator … (deallocator))` so handles are still GC-reclaimed; the safe surface no longer exports explicit-free helpers.
+- `(require (submod xgboost/foreign unsafe))` exposes `dmatrix-free!` and `booster-free!` for callers that need deterministic release (long-lived processes, very large in-flight matrices, migration from legacy explicit-free code). Both are idempotent: a second call hits the cpointer tag guard and raises `exn:fail:contract` instead of double-freeing.
+- `(require xgboost/foreign/raw)` is the direct C FFI layer.
 
 The native bridge is a C++ shared library, `libxgbcompat`, built with CMake and linked against `pkgs.xgboost`.
 
@@ -45,6 +45,26 @@ raco test \
   examples/26-booster-snapshot.rkt
 racket -l xgboost
 ```
+
+The dev shell also provisions two Racket linters into the user scope —
+[Resyntax](https://docs.racket-lang.org/resyntax/) (refactoring suggestions)
+and [racket-review](https://pkgs.racket-lang.org/package/review) (surface-level
+style/correctness checks):
+
+```bash
+resyntax analyze --directory xgboost          # report suggestions
+resyntax fix --directory xgboost              # apply them in place
+raco review xgboost/**/*.rkt                  # surface-level lint
+```
+
+Note: `raco review` does not expand macros, so the pure re-export facades
+(`main.rkt`, `foreign.rkt`, `foreign/raw.rkt`) and `info.rkt` carry a
+`#|review: ignore|#` directive — every `contract-out` re-export would
+otherwise be misreported as "provided but not defined".
+
+The `Nix checks` workflow runs `resyntax analyze` as a CI gate (the
+`resyntax` job): a pull request fails if Resyntax reports any suggestion, so
+run `resyntax fix` before pushing.
 
 `scripts/build-so.sh` builds the native library and stages it under
 `xgboost/native-libs/candidates/<platform>/`. After running it, a plain
@@ -133,10 +153,24 @@ racket examples/25-cuda-classification.rkt
 
 ### Racket
 
+The Racket side is split into small, logically coherent modules. Every
+top-level module path is a thin *re-export facade*; the implementation lives
+in sub-collection modules (target ≤ 500 lines/file).
+
 - `xgboost/info.rkt` - package metadata and native-library pre-install hook.
-- `xgboost/main.rkt` - high-level API.
-- `xgboost/ffi.rkt` - safe contracted low-level wrappers.
-- `xgboost/ffi/raw.rkt` - direct `define-ffi-definer` bindings.
+- `xgboost/main.rkt` - facade for the high-level API; re-exports `core/*`.
+- `xgboost/core/*.rkt` - high-level implementation: `coerce`, `global`,
+  `dmatrix`, `booster`, `train`, `predict`, `persist`.
+- `xgboost/foreign.rkt` - facade for the safe contracted layer; re-exports
+  `foreign/*` and defines the `unsafe` submodule.
+- `xgboost/foreign/*.rkt` - safe-layer implementation: `error`, `structs`,
+  `global`, `array-interface`, `dmatrix/{create,metadata,ops}`,
+  `booster/{core,predict,persist,inspect}`.
+- `xgboost/foreign/raw.rkt` - facade for the direct C FFI layer; re-exports
+  `foreign/raw/{library,global,dmatrix,booster}.rkt` (`define-ffi-definer`
+  bindings).
+- `xgboost/tests/*.rkt` - cross-cutting integration tests; module-local unit
+  tests live in `module+ test` submodules.
 - `xgboost/private/install-xgboost-native.rkt` - copies `libxgbcompat.*` from `$XGBOOST_NATIVE_LIB_PATH/lib` into `native-libs/`.
 - Selected files in `examples/` are assertion-backed examples; each exports
   `run-example`, prints concise output from `module+ main`, and verifies

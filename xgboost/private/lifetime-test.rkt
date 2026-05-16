@@ -4,7 +4,7 @@
   (require ffi/vector
            racket/list
            rackunit
-           (prefix-in ffi: "../ffi.rkt")
+           (prefix-in ffi: "../foreign.rkt")
            "../main.rkt")
 
   (define (force-gc!)

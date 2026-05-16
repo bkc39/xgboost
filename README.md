@@ -27,7 +27,7 @@ The default API is high level:
 (predict booster dtrain)
 ```
 
-Use `(require xgboost/ffi)` for the contracted low-level DMatrix/Booster wrappers, and `(require xgboost/ffi/raw)` for direct C FFI bindings.
+Use `(require xgboost/foreign)` for the contracted low-level DMatrix/Booster wrappers, and `(require xgboost/foreign/raw)` for direct C FFI bindings.
 
 ## Quick Start
 
@@ -79,8 +79,8 @@ dependency reasons.
 - `cpp/` - C++ wrapper library (`libxgbcompat`) built with CMake, links against `pkgs.xgboost`.
 - `examples/` - runnable examples; selected fast RackUnit-backed examples run by default checks.
 - `xgboost/main.rkt` - high-level root API for `(require xgboost)`.
-- `xgboost/ffi.rkt` - contracted low-level Racket wrappers.
-- `xgboost/ffi/raw.rkt` - direct C FFI bindings.
+- `xgboost/foreign.rkt` - contracted low-level Racket wrappers.
+- `xgboost/foreign/raw.rkt` - direct C FFI bindings.
 - `xgboost/private/` - native library installer implementation.
 - `flake.nix` - `cpp` and `racket` derivations.
 

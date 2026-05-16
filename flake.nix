@@ -369,9 +369,18 @@
                 raco pkg install --batch --auto --no-setup --link --scope user --skip-installed \
                   --name xgboost "$PWD/xgboost"
                 raco setup --no-docs --pkgs xgboost
+                echo "Installing Racket linters (Resyntax + racket-review)..."
+                # No --no-setup here: let `raco pkg install` run its own setup,
+                # which is scoped to the new user-scope packages.  A bare
+                # `raco setup` would instead try to recompile the read-only
+                # nix-store collections and fail with permission errors.
+                raco pkg install --batch --auto --scope user --skip-installed \
+                  resyntax review
                 touch "$deps_stamp"
-                echo "Done. Run: raco test xgboost/"
+                echo "Done. Lint: resyntax analyze --directory xgboost  |  raco review <files>"
               fi
+              # Expose user-scope Racket launchers (e.g. `resyntax`) on PATH.
+              export PATH="$(racket -e '(require setup/dirs)(display (path->string (find-user-console-bin-dir)))'):$PATH"
             '';
           };
         } // nixpkgs.lib.optionalAttrs hasCuda {

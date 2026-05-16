@@ -7,5 +7,8 @@ xgboost/native-libs/libxgboost.*
 xgboost/native-libs/candidates/linux-cuda/
 **/compiled/
 
+# Scribble-rendered documentation output (source is xgboost/scribblings/).
+xgboost/doc/
+
 # Local-only planning notes; agents may drop plan files here without committing.
 plans/
