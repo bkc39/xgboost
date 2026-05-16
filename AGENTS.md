@@ -54,6 +54,10 @@ resyntax analyze --directory xgboost          # report suggestions
 resyntax fix --directory xgboost              # apply them in place
 ```
 
+The `Nix checks` workflow runs `resyntax analyze` as a CI gate (the
+`resyntax` job): a pull request fails if Resyntax reports any suggestion, so
+run `resyntax fix` before pushing.
+
 `scripts/build-so.sh` builds the native library and stages it under
 `xgboost/native-libs/candidates/<platform>/`. After running it, a plain
 `raco pkg install` works without Nix:
