@@ -8,8 +8,6 @@
 
 (provide xgb-version/raw
          xgb-last-error/raw
-         xgb-run-regression-demo/raw
-         xgb-run-classification-demo/raw
          _xgb-log-callback
          xgb-build-info/raw
          xgb-get-global-config/raw
@@ -86,14 +84,6 @@
 (define-xgb xgb-last-error/raw
   (_fun -> _string/utf-8)
   #:c-id xgb_last_error)
-
-(define-xgb xgb-run-regression-demo/raw
-  (_fun (out : (_ptr o _double)) -> (rc : _int) -> (values rc out))
-  #:c-id xgb_run_regression_demo)
-
-(define-xgb xgb-run-classification-demo/raw
-  (_fun (out : (_ptr o _double)) -> (rc : _int) -> (values rc out))
-  #:c-id xgb_run_classification_demo)
 
 (define _xgb-log-callback
   (_fun _string/utf-8 -> _void))

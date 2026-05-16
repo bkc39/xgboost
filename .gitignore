@@ -6,3 +6,6 @@ xgboost/native-libs/libxgbcompat.*
 xgboost/native-libs/libxgboost.*
 xgboost/native-libs/candidates/linux-cuda/
 **/compiled/
+
+# Local-only planning notes; agents may drop plan files here without committing.
+plans/
