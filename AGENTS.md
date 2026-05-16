@@ -46,6 +46,14 @@ raco test \
 racket -l xgboost
 ```
 
+The dev shell also provisions [Resyntax](https://docs.racket-lang.org/resyntax/),
+a refactoring linter, into the user scope. Use it to check Racket style:
+
+```bash
+resyntax analyze --directory xgboost          # report suggestions
+resyntax fix --directory xgboost              # apply them in place
+```
+
 `scripts/build-so.sh` builds the native library and stages it under
 `xgboost/native-libs/candidates/<platform>/`. After running it, a plain
 `raco pkg install` works without Nix:

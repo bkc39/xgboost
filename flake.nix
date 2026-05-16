@@ -369,9 +369,15 @@
                 raco pkg install --batch --auto --no-setup --link --scope user --skip-installed \
                   --name xgboost "$PWD/xgboost"
                 raco setup --no-docs --pkgs xgboost
+                echo "Installing Resyntax (refactoring linter)..."
+                raco pkg install --batch --auto --no-setup --scope user --skip-installed \
+                  resyntax
+                raco setup --no-docs
                 touch "$deps_stamp"
-                echo "Done. Run: raco test xgboost/"
+                echo "Done. Run: raco test xgboost/  |  resyntax analyze --directory xgboost"
               fi
+              # Expose user-scope Racket launchers (e.g. `resyntax`) on PATH.
+              export PATH="$(racket -e '(require setup/dirs)(display (path->string (find-user-console-bin-dir)))'):$PATH"
             '';
           };
         } // nixpkgs.lib.optionalAttrs hasCuda {

@@ -8,13 +8,13 @@
 
 (define (copy-native-libs! dest-dir source-dir pattern)
   (make-directory* dest-dir)
-  (for ([f (in-list (directory-list source-dir))])
-    (when (regexp-match? pattern (path->string f))
-      (define src (build-path source-dir f))
-      (define dst (build-path dest-dir f))
-      (when (file-exists? dst)
-        (delete-file dst))
-      (copy-file src dst))))
+  (for ([f (in-list (directory-list source-dir))]
+        #:when (regexp-match? pattern (path->string f)))
+    (define src (build-path source-dir f))
+    (define dst (build-path dest-dir f))
+    (when (file-exists? dst)
+      (delete-file dst))
+    (copy-file src dst)))
 
 (define (has-matching-files? dir pattern)
   (and (directory-exists? dir)
@@ -82,15 +82,12 @@
                      (or (has-matching-files? dir installed-pattern)
                          (file-exists? tgz))))
          name))
-     (cond
-       [(not chosen)
-        (error 'pre-installer
-               "xgbcompat library not found. Either:\n  1. Run: ./scripts/build-so.sh linux|darwin, then raco pkg install\n  2. Set XGBOOST_NATIVE_LIB_PATH to a dir containing lib/libxgbcompat.*\n  3. Copy libxgbcompat.* manually to ~a"
-               (path->string native-libs-dir))]
-       [else
-        (define dir (build-path candidates-base chosen))
-        (unless (has-matching-files? dir installed-pattern)
-          (extract-tgz-to!
-           (build-path candidates-base (string-append chosen ".tar.gz"))
-           dir))
-        (copy-native-libs! native-libs-dir dir pattern)])]))
+     (unless chosen
+       (error
+        'pre-installer
+        "xgbcompat library not found. Either:\n  1. Run: ./scripts/build-so.sh linux|darwin, then raco pkg install\n  2. Set XGBOOST_NATIVE_LIB_PATH to a dir containing lib/libxgbcompat.*\n  3. Copy libxgbcompat.* manually to ~a"
+        (path->string native-libs-dir)))
+     (define dir (build-path candidates-base chosen))
+     (unless (has-matching-files? dir installed-pattern)
+       (extract-tgz-to! (build-path candidates-base (string-append chosen ".tar.gz")) dir))
+     (copy-native-libs! native-libs-dir dir pattern)]))
