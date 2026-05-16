@@ -15,8 +15,8 @@
          "library.rkt")
 
 (provide _DMatrix
-         _DMatrix/null
-         DMatrix?
+         _DMatrix/null ;; noqa
+         DMatrix? ;; noqa
          xgb-dmatrix-free/raw
          xgb-dmatrix-create-from-mat/raw
          xgb-dmatrix-create-from-uri/raw

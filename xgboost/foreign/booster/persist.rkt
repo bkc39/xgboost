@@ -4,8 +4,8 @@
 ;; bytes, full-state serialize/unserialize snapshots, and JSON config
 ;; round-trips.
 
-(require "../raw/booster.rkt"
-         "../error.rkt")
+(require "../error.rkt"
+         "../raw/booster.rkt")
 
 (provide booster-save-model!
          booster-load-model!

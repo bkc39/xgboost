@@ -8,12 +8,12 @@
 (require ffi/unsafe
          ffi/unsafe/alloc
          ffi/vector
-         "library.rkt"
-         "dmatrix.rkt")
+         "dmatrix.rkt"
+         "library.rkt")
 
 (provide _Booster
-         _Booster/null
-         Booster?
+         _Booster/null ;; noqa
+         Booster? ;; noqa
          xgb-booster-free/raw
          xgb-booster-create/raw
          xgb-booster-reset/raw

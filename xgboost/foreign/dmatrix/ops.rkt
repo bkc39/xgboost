@@ -6,10 +6,10 @@
 
 (require ffi/vector
          racket/string
-         "../raw/global.rkt"
-         "../raw/dmatrix.rkt"
-         "../structs.rkt"
          "../error.rkt"
+         "../raw/dmatrix.rkt"
+         "../raw/global.rkt"
+         "../structs.rkt"
          "metadata.rkt")
 
 (provide dmatrix-slice

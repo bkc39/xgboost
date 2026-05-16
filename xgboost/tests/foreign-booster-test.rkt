@@ -3,13 +3,13 @@
 ;; Integration tests for the Booster surface of `xgboost/foreign`: training,
 ;; prediction modes, save/load, snapshots, and per-iteration evaluation.
 
-(require rackunit
-         racket/file
-         ffi/vector
-         "../foreign.rkt"
-         (submod "../foreign.rkt" unsafe))
-
 (module+ test
+  (require ffi/vector
+           racket/file
+           rackunit
+           "../foreign.rkt"
+           (submod "../foreign.rkt" unsafe))
+
   ;; Same fixture as the gtest regression test: 8x3, label ≈ 2*x0 + x1 - x2.
   (define (regression-features)
     (f32vector 1.0 2.0 0.5 2.0 1.0 1.5 3.0 0.5 0.0

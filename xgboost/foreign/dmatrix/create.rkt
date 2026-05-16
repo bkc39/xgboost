@@ -9,11 +9,11 @@
 
 (require ffi/vector
          racket/string
-         "../raw/global.rkt"
-         "../raw/dmatrix.rkt"
-         "../structs.rkt"
+         "../array-interface.rkt"
          "../error.rkt"
-         "../array-interface.rkt")
+         "../raw/dmatrix.rkt"
+         "../raw/global.rkt"
+         "../structs.rkt")
 
 (provide dmatrix-create-from-mat
          dmatrix-create-from-uri

@@ -3,15 +3,15 @@
 ;; Integration tests for the high-level `xgboost` (core) API: DMatrix
 ;; construction, training, prediction, persistence, and metadata.
 
-(require rackunit
-         racket/file
-         (only-in racket/list first second last)
-         ffi/vector
-         (prefix-in ffi: "../foreign.rkt")
-         "../foreign/raw.rkt"
-         "../main.rkt")
-
 (module+ test
+  (require ffi/vector
+           racket/file
+           (only-in racket/list first second last)
+           rackunit
+           (prefix-in ffi: "../foreign.rkt")
+           "../foreign/raw.rkt"
+           "../main.rkt")
+
   (check-regexp-match #rx"^[0-9]+\\.[0-9]+\\.[0-9]+$" (xgboost-version))
   (check-regexp-match #rx"^\\{" (xgboost-build-info))
   (check-true (procedure? xgb-version/raw))
@@ -293,10 +293,10 @@
                         3
                         #:missing -1.0
                         #:as 'f32vector))
-    (define (close? a b)
-      (and (= (f32vector-length a) (f32vector-length b))
-           (for/and ([i (in-range (f32vector-length a))])
-             (< (abs (- (f32vector-ref a i) (f32vector-ref b i))) 1e-6))))
+    (define (close? xs ys)
+      (and (= (f32vector-length xs) (f32vector-length ys))
+           (for/and ([i (in-range (f32vector-length xs))])
+             (< (abs (- (f32vector-ref xs i) (f32vector-ref ys i))) 1e-6))))
     (check-true (close? dense base))
     (check-true (close? columnar base))
     (check-true (close? csr base)))

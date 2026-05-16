@@ -2,9 +2,9 @@
 
 (provide pre-installer)
 
-(require racket/file
-         file/gunzip
-         file/untar)
+(require file/gunzip
+         file/untar
+         racket/file)
 
 (define (copy-native-libs! dest-dir source-dir pattern)
   (make-directory* dest-dir)
@@ -48,7 +48,7 @@
          '("linux-cuda" "linux-cpu"))]
     [else '()]))
 
-(define (pre-installer collections-top-path this-collection-path user-specific?)
+(define (pre-installer _collections-top-path this-collection-path _user-specific?)
   (define native-libs-dir (build-path this-collection-path "native-libs"))
   (define candidates-base (build-path native-libs-dir "candidates"))
   (define cpp-lib-path (getenv "XGBOOST_NATIVE_LIB_PATH"))

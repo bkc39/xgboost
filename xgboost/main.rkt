@@ -1,5 +1,11 @@
 #lang racket/base
 
+;; raco review does surface-level linting without macro expansion, so it
+;; cannot see that every `contract-out` entry below re-exports an imported
+;; identifier — it would report each as "provided but not defined".  This is
+;; a pure re-export facade with nothing else to lint.
+#|review: ignore|#
+
 ;; Facade for the high-level XGBoost API.  `(require xgboost)` exposes the
 ;; ergonomic surface for ordinary Racket data; all implementation lives in
 ;; core/*.  DMatrix and Booster are the `dmatrix` / `booster` wrapper structs

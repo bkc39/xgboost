@@ -4,8 +4,8 @@
 ;; config, and log-callback registration.
 
 (require ffi/unsafe
-         "raw/global.rkt"
-         "error.rkt")
+         "error.rkt"
+         "raw/global.rkt")
 
 (provide xgboost-version
          xgboost-build-info

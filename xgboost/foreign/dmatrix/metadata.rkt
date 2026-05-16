@@ -5,9 +5,9 @@
 
 (require ffi/unsafe
          ffi/vector
-         "../raw/dmatrix.rkt"
+         "../array-interface.rkt"
          "../error.rkt"
-         "../array-interface.rkt")
+         "../raw/dmatrix.rkt")
 
 (provide dmatrix-set-float-info!
          dmatrix-set-uint-info!
@@ -55,7 +55,7 @@
   result)
 
 (define (dmatrix-get-feature-info h field)
-  (define-values (rc len count)
+  (define-values (rc len _count)
     (xgb-dmatrix-get-str-feature-info/raw h field 0 (make-bytes 0)))
   (cond
     [(zero? rc) '()]

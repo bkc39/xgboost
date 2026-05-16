@@ -1,5 +1,9 @@
 #lang info
 
+;; raco review lints this as a normal module and flags every `info`
+;; definition as unused; #lang info has no value-level uses to detect.
+#|review: ignore|#
+
 (define collection "xgboost")
 (define version "0.1")
 (define deps '("base"))

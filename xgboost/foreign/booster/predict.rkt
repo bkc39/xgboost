@@ -13,11 +13,10 @@
 (require ffi/unsafe
          ffi/vector
          racket/string
-         "../raw/booster.rkt"
-         "../structs.rkt"
-         "../error.rkt"
          "../array-interface.rkt"
-         "../dmatrix/ops.rkt")
+         "../dmatrix/ops.rkt"
+         "../error.rkt"
+         "../raw/booster.rkt")
 
 (provide booster-predict
          booster-predict-from-dense

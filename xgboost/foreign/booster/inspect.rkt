@@ -5,8 +5,8 @@
 
 (require ffi/vector
          racket/string
-         "../raw/booster.rkt"
-         "../error.rkt")
+         "../error.rkt"
+         "../raw/booster.rkt")
 
 (provide booster-set-attr!
          booster-delete-attr!

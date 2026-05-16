@@ -63,7 +63,7 @@
 ;;   (raw capacity buf) -> (values rc out-len out-count)
 ;; returning a list of NUL-separated strings.
 (define (copy-nul-separated-result who raw)
-  (define-values (rc len count) (raw 0 (make-bytes 0)))
+  (define-values (rc len _count) (raw 0 (make-bytes 0)))
   (cond
     [(zero? rc) '()]
     [(= rc 2)

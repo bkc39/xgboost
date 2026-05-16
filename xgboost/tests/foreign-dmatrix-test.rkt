@@ -4,15 +4,15 @@
 ;; `xgboost/foreign` (and the explicit-free helpers from its `unsafe`
 ;; submodule).
 
-(require rackunit
-         racket/file
-         (only-in racket/list first second third)
-         ffi/vector
-         (only-in (except-in ffi/unsafe ->) cast _pointer _uintptr)
-         "../foreign.rkt"
-         (submod "../foreign.rkt" unsafe))
-
 (module+ test
+  (require (only-in (except-in ffi/unsafe ->) cast _pointer _uintptr)
+           ffi/vector
+           racket/file
+           (only-in racket/list first second third)
+           rackunit
+           "../foreign.rkt"
+           (submod "../foreign.rkt" unsafe))
+
   ;; --- Global APIs --------------------------------------------------------
   (check-regexp-match #rx"^[0-9]+\\.[0-9]+\\.[0-9]+$" (xgboost-version))
 
@@ -36,7 +36,7 @@
                  (xgboost-set-global-config! "{not-json"))))
 
   (test-case "log callback registration accepts a Racket procedure"
-    (xgboost-register-log-callback! (lambda (msg) (void))))
+    (xgboost-register-log-callback! (lambda (_msg) (void))))
 
   ;; --- DMatrix round-trip -------------------------------------------------
   (define (make-data) (f32vector 1.0 2.0 3.0 4.0 5.0 6.0))  ; 2 rows x 3 cols

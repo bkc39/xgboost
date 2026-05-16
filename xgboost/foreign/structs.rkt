@@ -31,9 +31,9 @@
 ;; of double-freeing at the C level.
 
 (require ffi/unsafe
-         "raw/dmatrix.rkt"
+         "error.rkt"
          "raw/booster.rkt"
-         "error.rkt")
+         "raw/dmatrix.rkt")
 
 (provide (struct-out dmatrix-impl)
          dmatrix?

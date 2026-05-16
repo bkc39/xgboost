@@ -46,13 +46,21 @@ raco test \
 racket -l xgboost
 ```
 
-The dev shell also provisions [Resyntax](https://docs.racket-lang.org/resyntax/),
-a refactoring linter, into the user scope. Use it to check Racket style:
+The dev shell also provisions two Racket linters into the user scope —
+[Resyntax](https://docs.racket-lang.org/resyntax/) (refactoring suggestions)
+and [racket-review](https://pkgs.racket-lang.org/package/review) (surface-level
+style/correctness checks):
 
 ```bash
 resyntax analyze --directory xgboost          # report suggestions
 resyntax fix --directory xgboost              # apply them in place
+raco review xgboost/**/*.rkt                  # surface-level lint
 ```
+
+Note: `raco review` does not expand macros, so the pure re-export facades
+(`main.rkt`, `foreign.rkt`, `foreign/raw.rkt`) and `info.rkt` carry a
+`#|review: ignore|#` directive — every `contract-out` re-export would
+otherwise be misreported as "provided but not defined".
 
 The `Nix checks` workflow runs `resyntax analyze` as a CI gate (the
 `resyntax` job): a pull request fails if Resyntax reports any suggestion, so

@@ -4,11 +4,11 @@
 ;; shape queries, parameter setting, and the per-iteration update calls.
 
 (require ffi/vector
-         "../raw/global.rkt"
-         "../raw/booster.rkt"
-         "../structs.rkt"
+         "../array-interface.rkt"
          "../error.rkt"
-         "../array-interface.rkt")
+         "../raw/booster.rkt"
+         "../raw/global.rkt"
+         "../structs.rkt")
 
 (provide booster-create
          booster-reset!
