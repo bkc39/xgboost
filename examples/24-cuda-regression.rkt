@@ -14,7 +14,7 @@
 (require ffi/vector
          racket/format
          (only-in xgboost cuda-available?)
-         xgboost/ffi)
+         xgboost/foreign)
 
 (provide run-example cuda-available?)
 

@@ -13,10 +13,10 @@ This module provides the high-level Racket API for XGBoost. It accepts ordinary
 Racket data for common training and prediction workflows, while keeping native
 XGBoost handles behind opaque Racket values.
 
-For lower-level access, use @racketmodname[xgboost/ffi]. For direct C FFI
-bindings, use @racketmodname[xgboost/ffi/raw].
+For lower-level access, use @racketmodname[xgboost/foreign]. For direct C FFI
+bindings, use @racketmodname[xgboost/foreign/raw].
 
-The @racketmodname[xgboost/ffi] module also exposes lower-level DMatrix
+The @racketmodname[xgboost/foreign] module also exposes lower-level DMatrix
 constructors for URI loading, dense array-interface input, CSR, CSC, and
 columnar array-interface input. These are intended for callers that already
 work with native-style buffers or XGBoost JSON array-interface strings.
@@ -85,7 +85,7 @@ count.
 DMatrix lifetimes are managed by Racket's GC: the underlying XGBoost handle
 is reclaimed once the wrapper is unreachable. There is no public free
 operation; if you need deterministic release for a long-lived workload,
-import @racket[(submod xgboost/ffi unsafe)].
+import @racket[(submod xgboost/foreign unsafe)].
 }
 
 @defproc[(make-dmatrix-from-csr [indptr u64vector?]
