@@ -178,8 +178,3 @@ gracefully on CPU-only builds. They are NOT in the default `nix build` test suit
 - `devShells.cuda` - CUDA toolchain and link-mode install (x86_64-linux only).
 
 The package install command should use `--name xgboost` so Racket registers the intended collection name instead of a store-derived name.
-
-## Roadmap
-
-Current local implementation phases are tracked in `LOCAL_API_PLAN.md`.
-`TODO.md` remains a compact checklist for broad project status.

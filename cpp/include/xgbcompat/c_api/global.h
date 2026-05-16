@@ -11,10 +11,6 @@ const char* xgb_version(void);
 
 const char* xgb_last_error(void);
 
-int xgb_run_regression_demo(double* out_first_prediction);
-
-int xgb_run_classification_demo(double* out_first_prediction);
-
 /* Return XGBoost build information as a UTF-8 JSON string.
  *
  * Same size-then-fill contract as booster prediction/string APIs:

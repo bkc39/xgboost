@@ -29,7 +29,7 @@ inline std::string array_interface(std::uintptr_t ptr,
   return os.str();
 }
 
-// Same data shape as run_regression_demo() so we have a known-fittable target.
+// A small known-fittable regression target.
 struct RegressionFixture {
   std::vector<float> features;
   std::vector<float> labels;

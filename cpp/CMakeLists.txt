@@ -27,7 +27,6 @@ target_sources(xgbcompat
     src/xgbcompat/booster/prediction.cpp
     src/xgbcompat/booster/serialization.cpp
     src/xgbcompat/booster/training.cpp
-    src/xgbcompat/demo.cpp
     src/xgbcompat/detail/buffer.cpp
     src/xgbcompat/detail/error.cpp
     src/xgbcompat/dmatrix/create.cpp
@@ -76,7 +75,6 @@ if(BUILD_TESTING)
     tests/xgbcompat/booster/prediction_test.cpp
     tests/xgbcompat/booster/serialization_test.cpp
     tests/xgbcompat/booster/training_test.cpp
-    tests/xgbcompat/demo_test.cpp
     tests/xgbcompat/dmatrix/create_test.cpp
     tests/xgbcompat/dmatrix/info_test.cpp
     tests/xgbcompat/dmatrix/io_test.cpp

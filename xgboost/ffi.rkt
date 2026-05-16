@@ -15,8 +15,6 @@
   [xgboost-get-global-config (-> string?)]
   [xgboost-set-global-config! (-> string? void?)]
   [xgboost-register-log-callback! (-> (-> string? any/c) void?)]
-  [run-regression-demo (-> rational?)]
-  [run-classification-demo (-> (and/c rational? (>=/c 0) (<=/c 1)))]
   [dmatrix? (-> any/c boolean?)]
   [dmatrix-create-from-mat
    (->* (f32vector? exact-nonnegative-integer? exact-nonnegative-integer?)
@@ -261,16 +259,6 @@
 (define (check-ok rc who)
   (unless (zero? rc)
     (error who "FFI call failed (rc=~a): ~a" rc (xgb-last-error/raw))))
-
-(define (run-regression-demo)
-  (define-values (rc out) (xgb-run-regression-demo/raw))
-  (check-ok rc 'run-regression-demo)
-  out)
-
-(define (run-classification-demo)
-  (define-values (rc out) (xgb-run-classification-demo/raw))
-  (check-ok rc 'run-classification-demo)
-  out)
 
 ;; ---------------------------------------------------------------------------
 ;; DMatrix wrappers.
@@ -1195,9 +1183,6 @@
 
   ;; Existing smoke tests.
   (check-regexp-match #rx"^[0-9]+\\.[0-9]+\\.[0-9]+$" (xgboost-version))
-  (check-pred rational? (run-regression-demo))
-  (let ([p (run-classification-demo)])
-    (check-true (<= 0 p 1)))
 
   (test-case "build info returns JSON"
     (define info (xgboost-build-info))
