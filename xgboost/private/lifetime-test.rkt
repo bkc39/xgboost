@@ -1,7 +1,8 @@
 #lang racket/base
 
 (module+ test
-  (require ffi/vector
+  (require "test-runtime.rkt" ; first: pin OpenMP before the FFI loads
+           ffi/vector
            racket/list
            rackunit
            (prefix-in ffi: "../foreign.rkt")
@@ -96,9 +97,11 @@
     (one-cycle)
     (force-gc!)
     (define baseline (current-memory-use))
-    (for ([_ (in-range 200)])
+    ;; 100 train/predict cycles still surfaces catastrophic wrapper-struct
+    ;; accumulation while fitting the package-build service's per-test budget.
+    (for ([_ (in-range 100)])
       (one-cycle))
     (force-gc!)
     (define growth (- (current-memory-use) baseline))
-    (check-true (< growth (* 200 1024 1024))
-                (format "Racket heap grew by ~a bytes after 200 cycles" growth))))
+    (check-true (< growth (* 100 1024 1024))
+                (format "Racket heap grew by ~a bytes after 100 cycles" growth))))

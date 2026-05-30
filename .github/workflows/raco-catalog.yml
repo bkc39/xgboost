@@ -95,3 +95,23 @@ jobs:
       - name: Install and test
         shell: bash
         run: bash scripts/test-local.sh
+
+  # Reproduce pkg-build.racket-lang.org's *test step* exactly:
+  #   raco test --drdr --package xgboost
+  # `--drdr` adds a 90s/test timeout and treats any stderr output as a failure
+  # (check-stderr). Plain `raco test xgboost/` (the job above) ignores stderr,
+  # so the catalog can report "Tests failed" while our other checks stay green.
+  # This job is the guard that catches that class of regression.
+  pkg-build-emulation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Track the snapshot Racket the catalog builds against (currently 9.x),
+      # since the failure is sensitive to the Racket version + native libs.
+      - uses: Bogdanp/setup-racket@v1.15
+        with:
+          version: "current"
+          architecture: x64
+      - name: Reproduce the pkg-build test step
+        shell: bash
+        run: bash scripts/pkg-build-test.sh

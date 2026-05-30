@@ -1,0 +1,76 @@
+name: pkg-build harness
+
+# Faithful reproduction of pkg-build.racket-lang.org using the official
+# `pkg-build` tool and the server's own Docker images (old glibc, 1 GB cap).
+# This is the only environment that reproduces the catalog's "Tests failed",
+# and it writes the per-package test transcript that the public server omitted.
+#
+# Heavy (pulls images, installs a Racket release, builds in a VM), so it runs
+# on demand and weekly rather than on every PR. The fast PR guard is the
+# `pkg-build-emulation` job in raco-catalog.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      catalog:
+        description: "Package catalog to build xgboost from (default: public catalog = xgboost@master)"
+        required: false
+        default: "https://pkgs.racket-lang.org/"
+      racket_version:
+        description: "Racket release to install in the VM"
+        required: false
+        default: "9.0"
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Bogdanp/setup-racket@v1.15
+        with:
+          version: "stable"
+          architecture: x64
+
+      - name: Install the pkg-build tool
+        run: raco pkg install --auto --batch pkg-build
+
+      - name: Pre-pull the build-server Docker images
+        run: |
+          docker pull racket/pkg-build:deps-x86_64
+          docker pull racket/pkg-build:deps-min-x86_64
+
+      - name: Run the pkg-build harness
+        env:
+          XGB_CATALOG: ${{ github.event.inputs.catalog || 'https://pkgs.racket-lang.org/' }}
+          XGB_VERS: ${{ github.event.inputs.racket_version || '9.0' }}
+        run: racket scripts/pkg-build-harness/build.rkt
+
+      - name: Show test transcripts
+        if: always()
+        run: |
+          echo "=================== test-fail ==================="
+          for f in workdir/server/built/test-fail/*.txt; do
+            [ -f "$f" ] || { echo "(none)"; break; }
+            echo "----- $f -----"; cat "$f"
+          done
+          echo "=================== test-success ==================="
+          ls workdir/server/built/test-success/ 2>/dev/null || echo "(none)"
+          echo "=================== install (deps) ==================="
+          for f in workdir/server/built/install/*.txt; do
+            [ -f "$f" ] || break
+            echo "----- $f -----"; tail -40 "$f"
+          done
+
+      - name: Upload build results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-build-results
+          path: |
+            workdir/server/built/test-fail/
+            workdir/server/built/test-success/
+            workdir/server/built/install/
+          if-no-files-found: warn

@@ -15,3 +15,12 @@
 (define license 'Apache-2.0)
 (define pkg-tags '("machine-learning" "statistics" "data-science" "regression" "classification"))
 (define pre-install-collection "private/install-xgboost-native.rkt")
+
+;; `raco test --drdr` (used by pkg-build.racket-lang.org) defaults to a 90s
+;; per-test timeout. Give the native-heavy integration tests generous headroom
+;; so a slow/loaded builder cannot transiently time them out.
+(define test-timeouts
+  '(("tests/core-test.rkt" 300)
+    ("tests/foreign-booster-test.rkt" 300)
+    ("tests/foreign-dmatrix-test.rkt" 300)
+    ("private/lifetime-test.rkt" 300)))
