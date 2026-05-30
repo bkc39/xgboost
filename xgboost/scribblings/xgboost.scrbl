@@ -13,6 +13,10 @@ This module provides the high-level Racket API for XGBoost. It accepts ordinary
 Racket data for common training and prediction workflows, while keeping native
 XGBoost handles behind opaque Racket values.
 
+This page is the API reference. For a task-oriented walkthrough — loading data,
+setting parameters, training, predicting, and inspecting a model — see
+@other-doc['(lib "xgboost/scribblings/guide.scrbl")].
+
 For lower-level access, use @racketmodname[xgboost/foreign]. For direct C FFI
 bindings, use @racketmodname[xgboost/foreign/raw].
 
@@ -523,6 +527,12 @@ Returns the linked XGBoost version string.
 
 @defproc[(xgboost-build-info) string?]{
 Returns XGBoost build information as a JSON string.
+}
+
+@defproc[(cuda-available?) boolean?]{
+Returns @racket[#t] when the linked XGBoost build was compiled with CUDA
+support (the @racket["USE_CUDA"] key of @racket[xgboost-build-info] is set).
+Use it to guard GPU code paths so they degrade gracefully on CPU-only builds.
 }
 
 @section{Process Configuration}

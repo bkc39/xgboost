@@ -212,3 +212,12 @@ gracefully on CPU-only builds. They are NOT in the default `nix build` test suit
 - `devShells.cuda` - CUDA toolchain and link-mode install (x86_64-linux only).
 
 The package install command should use `--name xgboost` so Racket registers the intended collection name instead of a store-derived name.
+
+## Future Work
+
+- **Native plotting.** The user guide's "Inspecting a Model" section is the
+  analogue of XGBoost Python's *Plotting* docs, but it only exposes data
+  (`booster-dump`, `booster-feature-score`) and suggests piping `dot` output to
+  graphviz. A native rendering built on the Racket
+  [`plot`](https://docs.racket-lang.org/plot/) library — feature-importance bar
+  charts, and possibly tree diagrams — would be a good follow-up.
