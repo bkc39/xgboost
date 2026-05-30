@@ -10,8 +10,6 @@ name: pkg-build harness
 # `pkg-build-emulation` job in raco-catalog.yml.
 
 on:
-  push:
-    branches: [fix/pkg-build-tests] # TEMPORARY: drive the repro from this branch before merge
   workflow_dispatch:
     inputs:
       catalog:
