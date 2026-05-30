@@ -15,7 +15,7 @@ XGBoost handles behind opaque Racket values.
 
 This page is the API reference. For a task-oriented walkthrough — loading data,
 setting parameters, training, predicting, and inspecting a model — see
-@other-doc['(lib "xgboost/scribblings/guide.scrbl")].
+@other-doc['(lib "xgboost/scribblings/xgboost-guide.scrbl")].
 
 For lower-level access, use @racketmodname[xgboost/foreign]. For direct C FFI
 bindings, use @racketmodname[xgboost/foreign/raw].

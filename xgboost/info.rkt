@@ -8,7 +8,7 @@
 (define version "0.1")
 (define deps '("base"))
 (define build-deps '("rackunit-lib" "racket-doc" "scribble-lib"))
-(define scribblings '(("scribblings/guide.scrbl" (multi-page))
+(define scribblings '(("scribblings/xgboost-guide.scrbl" (multi-page))
                       ("scribblings/xgboost.scrbl" ())))
 (define pkg-desc "Racket bindings for XGBoost")
 (define pkg-authors '("bkschemer@gmail.com"))
