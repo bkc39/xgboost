@@ -1,6 +1,9 @@
 # xgboost
 
-Racket bindings for [XGBoost](https://xgboost.readthedocs.io/), built with Nix.
+Racket bindings for [XGBoost](https://xgboost.readthedocs.io/).
+
+- **XGBoost documentation:** https://xgboost.readthedocs.io/
+- **This package's API reference:** https://docs.racket-lang.org/xgboost/
 
 The default API is high level:
 
@@ -29,50 +32,78 @@ The default API is high level:
 
 Use `(require xgboost/foreign)` for the contracted low-level DMatrix/Booster wrappers, and `(require xgboost/foreign/raw)` for direct C FFI bindings.
 
-## Quick Start
+## Installation
 
 ```bash
-nix build
-./result/bin/xgboost
+raco pkg install xgboost
 ```
+
+The package ships a prebuilt native library and picks the right one for your
+platform at install time. On Linux it prefers a CUDA-enabled build when one is
+available and falls back to the CPU build otherwise.
 
 ## Development
 
+Development uses [Nix](https://nixos.org/), which provides a reproducible
+toolchain (Racket, CMake, the XGBoost C++ library, and the linters).
+
 ```bash
 nix develop
+```
 
-# build + test the C++ library standalone
+Inside the dev shell, build and test the C++ library:
+
+```bash
 cmake -S cpp -B cpp/build -G Ninja -DBUILD_TESTING=ON
 cmake --build cpp/build
 ctest --test-dir cpp/build --output-on-failure
+```
 
-# run the Racket tests
+Run the Racket tests:
+
+```bash
 raco test xgboost/
-raco test examples/11-global-apis.rkt \
-  examples/12-dmatrix-constructors.rkt \
-  examples/13-high-level-root-api.rkt \
-  examples/14-dmatrix-metadata.rkt \
-  examples/15-dmatrix-slicing-binary.rkt \
-  examples/16-quantile-cuts.rkt \
-  examples/17-booster-lifecycle-config.rkt \
-  examples/18-booster-attrs.rkt \
-  examples/19-booster-dumps-feature-scores.rkt \
-  examples/20-inplace-predict-dense.rkt \
-  examples/21-inplace-predict-csr.rkt \
-  examples/22-inplace-predict-columnar.rkt \
-  examples/23-custom-objective.rkt
-
-# run a narrative example manually
-racket examples/01-train-regression.rkt
+racket examples/01-train-regression.rkt   # narrative example
 ```
 
 `nix build` runs both the package tests and the fast assertion-backed examples
-under `examples/`. Longer narrative demos stay manually runnable, but they are
-not all part of the default package check.
+under `examples/`. Longer narrative demos stay manually runnable.
 
 Every new public API or user-visible feature should land with an
 example-backed E2E test unless that is impractical for runtime, platform, or
 dependency reasons.
+
+### Building the native library locally
+
+`scripts/build-so.sh` builds `libxgbcompat` plus its bundled dependencies and
+stages them under `xgboost/native-libs/candidates/<platform>/`, so a plain
+`raco pkg install` works afterwards without Nix. Run it from inside `nix
+develop`:
+
+```bash
+./scripts/build-so.sh darwin        # macOS (CPU)         → candidates/darwin/
+./scripts/build-so.sh linux         # Linux CPU           → candidates/linux-cpu/
+./scripts/build-so.sh linux-cuda    # Linux CUDA (x86_64) → candidates/linux-cuda/
+
+# Then install from the local checkout:
+raco pkg install --name xgboost ./xgboost
+```
+
+### Linters
+
+The dev shell provisions [Resyntax](https://docs.racket-lang.org/resyntax/)
+(refactoring suggestions) and
+[racket-review](https://pkgs.racket-lang.org/package/review) (surface-level
+style/correctness checks):
+
+```bash
+resyntax analyze --directory xgboost     # report suggestions
+resyntax fix --directory xgboost         # apply them in place
+raco review xgboost/**/*.rkt             # surface-level lint
+```
+
+The `Nix checks` CI workflow runs `resyntax analyze` as a gate, so run
+`resyntax fix` before pushing.
 
 ## Layout
 
@@ -84,5 +115,4 @@ dependency reasons.
 - `xgboost/private/` - native library installer implementation.
 - `flake.nix` - `cpp` and `racket` derivations.
 
-See `AGENTS.md` for architecture notes and `LOCAL_API_PLAN.md` for the local
-API roadmap.
+See `AGENTS.md` for architecture notes and the full set of build/test commands.
