@@ -5,7 +5,8 @@
 ;; submodule).
 
 (module+ test
-  (require (only-in (except-in ffi/unsafe ->) cast _pointer _uintptr)
+  (require "../private/test-runtime.rkt" ; first: pin OpenMP before the FFI loads
+           (only-in (except-in ffi/unsafe ->) cast _pointer _uintptr)
            ffi/vector
            racket/file
            (only-in racket/list first second third)
@@ -260,10 +261,14 @@
   ;; (`XgbDMatrixTest.LeakSmokeTest`) is the authoritative backstop; here we
   ;; assert the Racket-side balance counter stays at zero over 10k cycles and
   ;; that Racket memory use is bounded.
-  (test-case "10k explicit create/free cycles: counter balances, memory bounded"
+  ;; 2k cycles is plenty to surface a counter imbalance or unbounded
+  ;; Racket-heap growth while staying well inside the package-build service's
+  ;; per-test time/memory budget; the gtest LeakSmokeTest is the authoritative
+  ;; C-side backstop.
+  (test-case "2k explicit create/free cycles: counter balances, memory bounded"
     (define alive 0)
     (define mem-before (current-memory-use))
-    (for ([_ (in-range 10000)])
+    (for ([_ (in-range 2000)])
       (define dm (dmatrix-create-from-mat (make-data) 2 3))
       (set! alive (add1 alive))
       (dmatrix-set-float-info! dm "label" (f32vector 0.0 1.0))
@@ -273,7 +278,7 @@
     (define mem-after (current-memory-use))
     (check-equal? alive 0 "every allocation should have a matching free")
     (check-true (< (- mem-after mem-before) (* 64 1024 1024))
-                (format "Racket memory grew by ~a bytes over 10k iters"
+                (format "Racket memory grew by ~a bytes over 2k iters"
                         (- mem-after mem-before))))
 
   ;; --- Finalizer-path smoke test ------------------------------------------

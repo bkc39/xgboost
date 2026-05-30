@@ -4,7 +4,8 @@
 ;; construction, training, prediction, persistence, and metadata.
 
 (module+ test
-  (require ffi/vector
+  (require "../private/test-runtime.rkt" ; first: pin OpenMP before the FFI loads
+           ffi/vector
            racket/file
            (only-in racket/list first second last)
            rackunit

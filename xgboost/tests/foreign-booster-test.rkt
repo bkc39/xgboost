@@ -4,7 +4,8 @@
 ;; prediction modes, save/load, snapshots, and per-iteration evaluation.
 
 (module+ test
-  (require ffi/vector
+  (require "../private/test-runtime.rkt" ; first: pin OpenMP before the FFI loads
+           ffi/vector
            racket/file
            rackunit
            "../foreign.rkt"
