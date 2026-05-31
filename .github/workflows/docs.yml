@@ -26,8 +26,7 @@ jobs:
             --dest _site \
             ++xref-in setup/xref load-collections-xref \
             --redirect-main https://docs.racket-lang.org/ \
-            xgboost/scribblings/xgboost.scrbl \
-            xgboost/scribblings/xgboost-guide.scrbl
+            xgboost/scribblings/xgboost.scrbl
       - name: Upload rendered docs
         uses: actions/upload-artifact@v4
         with:

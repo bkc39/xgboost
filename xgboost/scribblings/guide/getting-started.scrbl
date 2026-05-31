@@ -128,5 +128,4 @@ The rest of this guide breaks the workflow down step by step:
  @item{@secref["config"] — global configuration, snapshots, and GPU training.}
 ]
 
-For the precise contract of every procedure, see the @racketmodname[xgboost]
-API reference.
+For the precise contract of every procedure, see the @secref["reference"].
