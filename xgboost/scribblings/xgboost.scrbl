@@ -7,6 +7,8 @@
 
 @title{XGBoost}
 
+@author[(author+email "bkc" "bkschemer@gmail.com")]
+
 @defmodule[xgboost]
 
 This module provides the high-level Racket API for XGBoost. It accepts ordinary
@@ -17,10 +19,10 @@ This page is the API reference. For a task-oriented walkthrough — loading data
 setting parameters, training, predicting, and inspecting a model — see
 @other-doc['(lib "xgboost/scribblings/xgboost-guide.scrbl")].
 
-For lower-level access, use @racketmodname[xgboost/foreign]. For direct C FFI
-bindings, use @racketmodname[xgboost/foreign/raw].
+For lower-level access, use @racketmodfont{xgboost/foreign}. For direct C FFI
+bindings, use @racketmodfont{xgboost/foreign/raw}.
 
-The @racketmodname[xgboost/foreign] module also exposes lower-level DMatrix
+The @racketmodfont{xgboost/foreign} module also exposes lower-level DMatrix
 constructors for URI loading, dense array-interface input, CSR, CSC, and
 columnar array-interface input. These are intended for callers that already
 work with native-style buffers or XGBoost JSON array-interface strings.

@@ -5,7 +5,7 @@
 
 @title{XGBoost: A User Guide}
 
-@author{The xgboost Racket package}
+@author[(author+email "bkc" "bkschemer@gmail.com")]
 
 This guide is a task-oriented tour of the high-level @racketmodname[xgboost] API.
 It follows the same arc as the
@@ -63,6 +63,8 @@ workflow down step by step.
 @include-section["guide/parameters.scrbl"]
 @include-section["guide/training.scrbl"]
 @include-section["guide/prediction.scrbl"]
+@include-section["guide/ranking.scrbl"]
 @include-section["guide/objectives.scrbl"]
+@include-section["guide/recipes.scrbl"]
 @include-section["guide/inspection.scrbl"]
 @include-section["guide/config.scrbl"]

@@ -108,7 +108,7 @@ The `Nix checks` CI workflow runs `resyntax analyze` as a gate, so run
 ## Layout
 
 - `cpp/` - C++ wrapper library (`libxgbcompat`) built with CMake, links against `pkgs.xgboost`.
-- `examples/` - runnable examples; selected fast RackUnit-backed examples run by default checks.
+- `examples/` - runnable examples; selected fast RackUnit-backed examples run by default checks. See [`examples/README.md`](examples/README.md) for an indexed tour mapped to the upstream demos and tutorials.
 - `xgboost/main.rkt` - high-level root API for `(require xgboost)`.
 - `xgboost/foreign.rkt` - contracted low-level Racket wrappers.
 - `xgboost/foreign/raw.rkt` - direct C FFI bindings.
