@@ -1,8 +1,11 @@
 # Examples
 
-Runnable, self-contained programs that exercise the `xgboost` Racket bindings.
-Each file embeds or synthesizes its own data — no downloads — and most assert
-their own behavior with RackUnit so they double as end-to-end tests.
+Runnable programs that exercise the `xgboost` Racket bindings. Most embed or
+synthesize their own data and assert their own behavior with RackUnit so they
+double as end-to-end tests. `27-get-started.rkt` downloads the iris dataset,
+falling back to a bundled copy when offline; the download and the train/test
+split live in the `xgboost/private/demo-utils` helper (with the fallback CSV at
+`xgboost/private/data/iris.csv`).
 
 ## Running
 
@@ -32,7 +35,7 @@ Racket counterpart of XGBoost's
 
 | File | Shows | Upstream analogue |
 | --- | --- | --- |
-| `27-get-started.rkt` | LIBSVM file → train → predict → save/load round-trip | [Get Started](https://xgboost.readthedocs.io/en/stable/get_started.html) |
+| `27-get-started.rkt` | iris: download → train/test split → multiclass train → predict | [Get Started](https://xgboost.readthedocs.io/en/stable/get_started.html) |
 | `00-print-dmatrix.rkt` | Smallest end-to-end exercise of the DMatrix primitives | — |
 | `01-train-regression.rkt` | End-to-end regression training run | `demo/guide-python` |
 | `02-train-classifier.rkt` | End-to-end binary-classification training run | `demo/guide-python` |

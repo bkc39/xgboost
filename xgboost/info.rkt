@@ -6,7 +6,7 @@
 
 (define collection "xgboost")
 (define version "0.1")
-(define deps '("base"))
+(define deps '("base" "net-lib"))
 (define build-deps '("rackunit-lib" "racket-doc" "scribble-lib"))
 (define scribblings '(("scribblings/xgboost.scrbl" (multi-page))))
 (define pkg-desc "Racket bindings for XGBoost")
