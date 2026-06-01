@@ -129,5 +129,4 @@ Other well-known fields have dedicated setters: @racket[dmatrix-set-weight!],
 @racket[dmatrix-set-base-margin!], @racket[dmatrix-set-group!] (for ranking),
 and @racket[dmatrix-set-label-lower-bound!] /
 @racket[dmatrix-set-label-upper-bound!] (for AFT survival objectives). Each
-identifier above links to its full contract in the @racketmodname[xgboost]
-API reference.
+identifier above links to its full contract in the @secref["reference"].

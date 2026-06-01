@@ -42,7 +42,10 @@ raco test \
   examples/21-inplace-predict-csr.rkt \
   examples/22-inplace-predict-columnar.rkt \
   examples/23-custom-objective.rkt \
-  examples/26-booster-snapshot.rkt
+  examples/26-booster-snapshot.rkt \
+  examples/27-get-started.rkt \
+  examples/28-param-recipes.rkt \
+  examples/29-learning-to-rank.rkt
 racket -l xgboost
 ```
 
