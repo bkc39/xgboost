@@ -544,3 +544,36 @@ Registers a process-global XGBoost log callback.
 The callback receives log messages as strings. Since the registration is
 process-global, callers should treat it as shared mutable process state.
 }
+
+@section{Demo Helpers}
+
+@defmodule[xgboost/private/demo-utils]
+
+These helpers are bundled with the package to support the examples and the
+@secref["getting-started"] chapter; they are not part of the modeling API. They
+stand in for the scikit-learn conveniences the upstream XGBoost quickstart
+relies on.
+
+@defproc[(load-iris)
+         (values (listof (listof real?))
+                 (listof exact-nonnegative-integer?))]{
+Returns the iris dataset as @racket[(values X y)], where @racket[X] is a list of
+four-element feature rows and @racket[y] is a list of integer class labels
+(@racket[0], @racket[1], or @racket[2]). The data is downloaded from the UCI
+repository; if the network is unavailable, a copy bundled with the package is
+used instead, so the examples run offline.
+}
+
+@defproc[(train-test-split [X (listof (listof real?))]
+                           [y (listof exact-nonnegative-integer?)]
+                           [#:test-size test-size (real-in 0 1) 0.2]
+                           [#:seed seed exact-integer? 0])
+         (values (listof (listof real?))
+                 (listof (listof real?))
+                 (listof exact-nonnegative-integer?)
+                 (listof exact-nonnegative-integer?))]{
+Shuffles and partitions @racket[X] and @racket[y] into training and test sets,
+returning @racket[(values X-train X-test y-train y-test)] like its scikit-learn
+namesake. @racket[#:test-size] is the held-out fraction; @racket[#:seed] makes
+the split reproducible.
+}
