@@ -23,8 +23,11 @@ wrapper that exposes additional DMatrix constructors, metadata and dataset
 operations, booster inspection, CPU in-place prediction, and custom-objective
 training. For direct C FFI bindings, use @racketmodfont{xgboost/foreign/raw}.
 
-This documentation has two parts: a task-oriented @secref["user-guide"] that
-mirrors the upstream XGBoost tutorials, and a complete @secref["reference"].
+This documentation has three parts: a task-oriented @secref["user-guide"] that
+mirrors the upstream XGBoost tutorials, a set of literate @secref["examples"]
+whose prose and code are the same source the test suite runs, and a complete
+@secref["reference"].
 
 @include-section["xgboost-guide.scrbl"]
+@include-section["examples.scrbl"]
 @include-section["reference.scrbl"]

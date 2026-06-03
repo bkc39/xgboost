@@ -1,25 +1,37 @@
 # Examples
 
-Runnable programs that exercise the `xgboost` Racket bindings. Most embed or
-synthesize their own data and assert their own behavior with RackUnit so they
-double as end-to-end tests. `27-get-started.rkt` downloads the iris dataset,
-falling back to a bundled copy when offline; the download and the train/test
-split live in the `xgboost/private/demo-utils` helper (with the fallback CSV at
-`xgboost/private/data/iris.csv`).
+Runnable programs that exercise the `xgboost` Racket bindings. Each example is a
+[literate program](https://docs.racket-lang.org/scribble/lp.html): the prose and
+code you read in the [published manual](https://docs.racket-lang.org/xgboost/)
+are the *same source* that lives here, so the walkthroughs never drift from
+working code. Most synthesize their own data and assert their own behavior with
+RackUnit so they double as end-to-end tests. `27-get-started.rkt` downloads the
+iris dataset, falling back to a bundled copy when offline; the download and the
+train/test split live in the `xgboost/private/demo-utils` helper (with the
+fallback CSV at `xgboost/private/data/iris.csv`).
+
+> **Conversion in progress.** The examples are being converted to the literate
+> `#lang scribble/lp2` format (mirroring the sister
+> [`scs`](https://github.com/bkc39/scs) package). Converted examples expose a
+> `run-example` thunk and keep their runner + RackUnit checks in a companion
+> harness under [`test/`](test/); not-yet-converted files remain plain scripts.
 
 ## Running
 
-From the repo root, inside the Nix dev shell:
+Each example file (`NN-name.rkt`) is a literate `scribble/lp2` module that
+exports `run-example` and does no work on its own. Its companion
+[`test/NN-name.rkt`](test/) drives it: `module+ main` displays output and
+`module+ test` checks it. From the repo root, inside the Nix dev shell:
 
 ```bash
-racket examples/01-train-regression.rkt        # run one example
-raco test examples/27-get-started.rkt          # run its RackUnit checks
+racket examples/test/01-train-regression.rkt    # run one example (its module+ main)
+raco test examples/test/01-train-regression.rkt # run its RackUnit checks
+raco test examples/test/                         # run the whole suite
 ```
 
-The fast, assertion-backed subset runs as part of `nix build`; see `AGENTS.md`
-for the exact list. The longer narrative demos (the real-dataset ones) stay
-manually runnable. The CUDA examples (24, 25) need a physical NVIDIA GPU and a
-CUDA-enabled native build; they skip gracefully on CPU-only builds.
+The assertion-backed suite runs as part of `nix build`; see `AGENTS.md`. The
+CUDA examples (24, 25) need a physical NVIDIA GPU and a CUDA-enabled native
+build; they skip gracefully on CPU-only builds.
 
 ## Start here
 
