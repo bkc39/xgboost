@@ -25,3 +25,8 @@ see @filepath{examples/README.md} for the full index.)
 @; core tasks
 @lp-include["../../examples/00-print-dmatrix.rkt"]
 @lp-include["../../examples/01-train-regression.rkt"]
+@lp-include["../../examples/02-train-classifier.rkt"]
+@lp-include["../../examples/04-train-multiclass.rkt"]
+@lp-include["../../examples/05-train-with-eval.rkt"]
+@lp-include["../../examples/06-iris.rkt"]
+@lp-include["../../examples/27-get-started.rkt"]

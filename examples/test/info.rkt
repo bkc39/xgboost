@@ -13,4 +13,9 @@
 ;; same generous per-test headroom as the package integration tests.
 (define test-timeouts
   '(("00-print-dmatrix.rkt" 300)
-    ("01-train-regression.rkt" 300)))
+    ("01-train-regression.rkt" 300)
+    ("02-train-classifier.rkt" 300)
+    ("04-train-multiclass.rkt" 300)
+    ("05-train-with-eval.rkt" 300)
+    ("06-iris.rkt" 300)
+    ("27-get-started.rkt" 300)))

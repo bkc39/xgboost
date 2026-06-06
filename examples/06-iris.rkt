@@ -1,29 +1,129 @@
-#lang racket/base
+#lang scribble/lp2
 
-;; "Batteries-included" Iris classification example.
-;;
-;; The full UCI Iris dataset (150 rows, 4 features, 3 classes) is embedded
-;; below as a CSV string literal — no network or filesystem needed to run.
-;; The flow shows the full real-data path:
-;;
-;;   1. parse the CSV → list of (features-list, label-int) rows
-;;   2. deterministic 80/20 train/test split (every 5th row → test)
-;;   3. flatten into row-major f32vector → DMatrix + label info
-;;   4. train multi:softprob, log mlogloss on both splits per round
-;;   5. predict on the held-out test set; report accuracy + confusion matrix
-;;
-;; Run from the repo root:
-;;   nix develop --command racket examples/06-iris.rkt
-;;
-;; Source: UCI Machine Learning Repository.
-;;   https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data
+@(require (for-label ffi/vector
+                     racket/base
+                     racket/string
+                     xgboost))
 
+@section[#:tag "ex-iris"]{Iris: a full classification pipeline}
+
+This example walks the whole real-data path on the classic
+@hyperlink["https://archive.ics.uci.edu/ml/datasets/iris"]{UCI Iris} dataset
+(150 rows, 4 features, 3 species) with no network or filesystem dependency --- the
+CSV is embedded as a string literal at the end of the file. The flow is: parse
+the CSV, make a deterministic train/test split, build @tech{DMatrix}es, train
+@racket["multi:softprob"] while logging @racket["mlogloss"], then predict on the
+held-out set and report accuracy and a confusion matrix.
+
+@chunk[<r06-require>
 (require ffi/vector
-         racket/format
+         racket/list
          racket/string
-         xgboost)
+         xgboost)]
 
-(define iris-csv #<<IRIS-CSV
+@chunk[<r06-provide>
+(provide run-example)]
+
+@bold{Labels.} Map the species strings to class indices:
+
+@chunk[<r06-constants>
+  (define class-index
+    (hash "Iris-setosa"     0
+          "Iris-versicolor" 1
+          "Iris-virginica"  2))]
+
+@bold{Parsing.} Each non-empty line is four feature numbers and a species name;
+@racket[parse-iris] returns a list of @tt{(features . label)} pairs:
+
+@chunk[<r06-parse>
+  (define (parse-iris csv)
+    (for/list ([line (in-list (string-split csv "\n"))]
+               #:when (positive? (string-length (string-trim line))))
+      (define parts (string-split line ","))
+      (cons (for/list ([p (in-list (take parts 4))]) (string->number p))
+            (hash-ref class-index (list-ref parts 4)))))]
+
+@bold{Splitting.} Every 5th row (in CSV order, which strides through the three
+species) goes to test --- a deterministic, class-balanced 120/30 split:
+
+@chunk[<r06-split>
+  (define (split-rows rows)
+    (for/fold ([train '()] [test '()] #:result (values (reverse train)
+                                                        (reverse test)))
+              ([row (in-list rows)] [i (in-naturals)])
+      (if (zero? (modulo i 5))
+          (values train (cons row test))
+          (values (cons row train) test))))]
+
+@bold{Building DMatrices.} Flatten the row lists into a row-major
+@racket[f32vector] plus a label vector:
+
+@chunk[<r06-build>
+  (define ncol 4)
+  (define (rows->dmatrix rs)
+    (define n (length rs))
+    (define features (make-f32vector (* n ncol)))
+    (define labels (make-f32vector n))
+    (for ([row (in-list rs)] [i (in-naturals)])
+      (for ([v (in-list (car row))] [j (in-naturals)])
+        (f32vector-set! features (+ (* i ncol) j) (exact->inexact v)))
+      (f32vector-set! labels i (exact->inexact (cdr row))))
+    (values (make-dmatrix features #:nrow n #:ncol ncol #:labels labels) labels))]
+
+@bold{The run.} Set up the booster with both matrices watched, iterate while
+collecting @racket["mlogloss"] history, then predict on the test set, take the
+argmax class per row, and tally accuracy and a 3×3 confusion matrix (indexed
+@tt{truth*3 + pred}):
+
+@chunk[<r06-run>
+(define (run-example)
+  (define rows (parse-iris iris-csv))
+  (define-values (train-rows test-rows) (split-rows rows))
+  (define-values (dtrain train-labels) (rows->dmatrix train-rows))
+  (define-values (dtest  test-labels)  (rows->dmatrix test-rows))
+  (define booster
+    (train dtrain
+           #:evals (list (cons "test" dtest))
+           #:objective "multi:softprob"
+           #:num-class 3
+           #:eval-metric "mlogloss"
+           #:max-depth 4
+           #:eta 0.3
+           #:verbosity 0
+           #:rounds 0))
+  (define eval-set (list (cons "train" dtrain) (cons "test" dtest)))
+  (define history
+    (for/list ([iter (in-range 50)])
+      (booster-update-one-iter! booster iter dtrain)
+      (parse-eval-line (eval-one-iter booster iter eval-set))))
+  (define n-test (length test-rows))
+  (define probs (predict booster dtest #:as 'f32vector))
+  (define preds
+    (for/list ([i (in-range n-test)])
+      (define p0 (f32vector-ref probs (+ (* i 3) 0)))
+      (define p1 (f32vector-ref probs (+ (* i 3) 1)))
+      (define p2 (f32vector-ref probs (+ (* i 3) 2)))
+      (cond [(and (>= p0 p1) (>= p0 p2)) 0]
+            [(>= p1 p2) 1]
+            [else 2])))
+  (define correct
+    (for/sum ([pred (in-list preds)] [i (in-range n-test)])
+      (if (= pred (inexact->exact (f32vector-ref test-labels i))) 1 0)))
+  (define confusion (make-vector 9 0))
+  (for ([pred (in-list preds)] [i (in-range n-test)])
+    (define cell (+ (* (inexact->exact (f32vector-ref test-labels i)) 3) pred))
+    (vector-set! confusion cell (add1 (vector-ref confusion cell))))
+  (values (/ correct n-test) confusion history n-test))]
+
+The harness @filepath{test/06-iris.rkt} prints the training log, the test
+accuracy, and the confusion matrix, and asserts the model clears a high
+accuracy floor on the held-out species.
+
+@bold{The data.} The embedded UCI Iris CSV (150 rows,
+@tt{sepal-length,sepal-width,petal-length,petal-width,species}):
+
+@chunk[<r06-data>
+  (define iris-csv #<<IRIS-CSV
 5.1,3.5,1.4,0.2,Iris-setosa
 4.9,3.0,1.4,0.2,Iris-setosa
 4.7,3.2,1.3,0.2,Iris-setosa
@@ -175,132 +275,14 @@
 6.2,3.4,5.4,2.3,Iris-virginica
 5.9,3.0,5.1,1.8,Iris-virginica
 IRIS-CSV
-)
+  )]
 
-(define class-names (vector "setosa" "versicolor" "virginica"))
-(define class-index
-  (hash "Iris-setosa"     0
-        "Iris-versicolor" 1
-        "Iris-virginica"  2))
-
-;; ----- Parse the CSV ------------------------------------------------------
-
-(define rows
-  (for/list ([line (in-list (string-split iris-csv "\n"))]
-             #:when (positive? (string-length (string-trim line))))
-    (define parts (string-split line ","))
-    (cons (for/list ([p (in-list (list (list-ref parts 0) (list-ref parts 1)
-                                       (list-ref parts 2) (list-ref parts 3)))])
-            (string->number p))
-          (hash-ref class-index (list-ref parts 4)))))
-
-(printf "loaded ~a rows from embedded CSV\n" (length rows))
-
-;; ----- Train/test split ---------------------------------------------------
-
-;; Every 5th row (in CSV order, which interleaves classes by stride 50) goes
-;; to test; the remaining 4/5 form the training set.  Deterministic and
-;; class-balanced: 30 test rows / 120 train rows, 10 per class in test.
-(define-values (train-rows test-rows)
-  (for/fold ([train '()] [test '()])
-            ([row (in-list rows)] [i (in-naturals)])
-    (if (zero? (modulo i 5))
-        (values train (cons row test))
-        (values (cons row train) test))))
-
-(printf "  train: ~a rows, test: ~a rows\n"
-        (length train-rows) (length test-rows))
-
-;; ----- Build DMatrices ---------------------------------------------------
-
-(define ncol 4)
-
-(define (rows->dmatrix rs)
-  (define n (length rs))
-  (define features (make-f32vector (* n ncol)))
-  (define labels (make-f32vector n))
-  (for ([row (in-list rs)] [i (in-naturals)])
-    (for ([v (in-list (car row))] [j (in-naturals)])
-      (f32vector-set! features (+ (* i ncol) j) (exact->inexact v)))
-    (f32vector-set! labels i (exact->inexact (cdr row))))
-  (values (make-dmatrix features #:nrow n #:ncol ncol #:labels labels)
-          labels))
-
-(define-values (dtrain train-labels) (rows->dmatrix train-rows))
-(define-values (dtest  test-labels)  (rows->dmatrix test-rows))
-
-;; ----- Train ------------------------------------------------------------
-
-(define booster
-  (train dtrain
-         #:evals (list (cons "test" dtest))
-         #:objective "multi:softprob"
-         #:num-class 3
-         #:eval-metric "mlogloss"
-         #:max-depth 4
-         #:eta 0.3
-         #:verbosity 0
-         #:rounds 0))
-
-(define rounds 50)
-(define eval-set (list (cons "train" dtrain) (cons "test" dtest)))
-
-(printf "\ntraining (~a rounds, watching mlogloss):\n" rounds)
-(printf "  ~a  ~a  ~a\n"
-        (~a "iter" #:width 4)
-        (~a "train-mlogloss" #:width 16 #:align 'right)
-        (~a "test-mlogloss"  #:width 16 #:align 'right))
-
-(define (log-iter? i)
-  (or (< i 5) (zero? (modulo (+ i 1) 10))))
-
-(for ([iter (in-range rounds)])
-  (booster-update-one-iter! booster iter dtrain)
-  (when (log-iter? iter)
-    (define m (parse-eval-line (eval-one-iter booster iter eval-set)))
-    (printf "  ~a  ~a  ~a\n"
-            (~a iter #:width 4)
-            (~r (hash-ref m "train-mlogloss") #:precision '(= 4) #:min-width 16)
-            (~r (hash-ref m "test-mlogloss")  #:precision '(= 4) #:min-width 16))))
-
-;; ----- Evaluate on the held-out test set --------------------------------
-
-(define n-test (length test-rows))
-(define probs (predict booster dtest #:as 'f32vector))
-
-(define preds
-  (for/list ([i (in-range n-test)])
-    (define p0 (f32vector-ref probs (+ (* i 3) 0)))
-    (define p1 (f32vector-ref probs (+ (* i 3) 1)))
-    (define p2 (f32vector-ref probs (+ (* i 3) 2)))
-    (cond [(and (>= p0 p1) (>= p0 p2)) 0]
-          [(>= p1 p2) 1]
-          [else 2])))
-
-(define correct
-  (for/sum ([pred (in-list preds)] [i (in-range n-test)])
-    (if (= pred (inexact->exact (f32vector-ref test-labels i))) 1 0)))
-
-;; 3x3 confusion matrix indexed as truth*3 + pred.
-(define confusion (make-vector 9 0))
-(for ([pred (in-list preds)] [i (in-range n-test)])
-  (define truth (inexact->exact (f32vector-ref test-labels i)))
-  (define cell (+ (* truth 3) pred))
-  (vector-set! confusion cell (+ 1 (vector-ref confusion cell))))
-
-(printf "\ntest accuracy: ~a/~a (~a%)\n"
-        correct n-test
-        (~r (* 100 (/ correct n-test)) #:precision '(= 1)))
-
-(printf "\nconfusion matrix (rows=truth, cols=pred):\n")
-(printf "  ~a  ~a  ~a  ~a\n"
-        (~a "" #:width 14)
-        (~a (vector-ref class-names 0) #:width 10 #:align 'right)
-        (~a (vector-ref class-names 1) #:width 10 #:align 'right)
-        (~a (vector-ref class-names 2) #:width 10 #:align 'right))
-(for ([truth (in-range 3)])
-  (printf "  truth=~a  ~a  ~a  ~a\n"
-          (~a (vector-ref class-names truth) #:width 10)
-          (~a (vector-ref confusion (+ (* truth 3) 0)) #:width 10 #:align 'right)
-          (~a (vector-ref confusion (+ (* truth 3) 1)) #:width 10 #:align 'right)
-          (~a (vector-ref confusion (+ (* truth 3) 2)) #:width 10 #:align 'right)))
+@chunk[<*>
+  <r06-require>
+  <r06-provide>
+  <r06-constants>
+  <r06-parse>
+  <r06-split>
+  <r06-build>
+  <r06-run>
+  <r06-data>]
