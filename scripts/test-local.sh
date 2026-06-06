@@ -37,25 +37,8 @@ echo "--- installing from candidates ---"
 echo "--- raco test xgboost/ ---"
 "$RACO" test xgboost/
 
-echo "--- CPU examples ---"
-"$RACO" test \
-  examples/11-global-apis.rkt \
-  examples/12-dmatrix-constructors.rkt \
-  examples/13-high-level-root-api.rkt \
-  examples/14-dmatrix-metadata.rkt \
-  examples/15-dmatrix-slicing-binary.rkt \
-  examples/16-quantile-cuts.rkt \
-  examples/17-booster-lifecycle-config.rkt \
-  examples/18-booster-attrs.rkt \
-  examples/19-booster-dumps-feature-scores.rkt \
-  examples/20-inplace-predict-dense.rkt \
-  examples/21-inplace-predict-csr.rkt \
-  examples/22-inplace-predict-columnar.rkt \
-  examples/23-custom-objective.rkt \
-  examples/26-booster-snapshot.rkt
-
-echo "--- CUDA examples (expect graceful skip on CPU build) ---"
-"$RACKET" examples/24-cuda-regression.rkt
-"$RACKET" examples/25-cuda-classification.rkt
+echo "--- examples (literate scribble/lp2; runners + checks in examples/test/) ---"
+# The CUDA harnesses (24, 25) self-skip when no GPU is available.
+"$RACO" test examples/test/
 
 echo "--- all done ---"

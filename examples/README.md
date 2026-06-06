@@ -10,11 +10,11 @@ iris dataset, falling back to a bundled copy when offline; the download and the
 train/test split live in the `xgboost/private/demo-utils` helper (with the
 fallback CSV at `xgboost/private/data/iris.csv`).
 
-> **Conversion in progress.** The examples are being converted to the literate
-> `#lang scribble/lp2` format (mirroring the sister
-> [`scs`](https://github.com/bkc39/scs) package). Converted examples expose a
-> `run-example` thunk and keep their runner + RackUnit checks in a companion
-> harness under [`test/`](test/); not-yet-converted files remain plain scripts.
+Every example is a literate `#lang scribble/lp2` program (mirroring the sister
+[`scs`](https://github.com/bkc39/scs) package): it exposes a `run-example` thunk
+and keeps its runner + RackUnit checks in a companion harness under
+[`test/`](test/). They are woven into the published
+[Examples chapter](https://docs.racket-lang.org/xgboost/examples.html).
 
 ## Running
 

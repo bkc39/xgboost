@@ -9,9 +9,9 @@
 Several XGBoost features that have their own tutorials upstream are, from the
 API's point of view, just parameter settings on an otherwise ordinary
 @racket[train] call. This chapter collects them as short recipes. Each passes
-its settings through @racket[#:params] (see @secref["parameters"]); a runnable
-version of all four, with assertions, is @filepath{examples/28-param-recipes.rkt}
-in the package source.
+its settings through @racket[#:params] (see @secref["parameters"]); the
+@secref["ex-param-recipes"] example walks all four as a runnable,
+assertion-backed program.
 
 @section{DART booster}
 

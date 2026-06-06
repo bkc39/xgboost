@@ -63,11 +63,14 @@ Run the Racket tests:
 
 ```bash
 raco test xgboost/
-racket examples/01-train-regression.rkt   # narrative example
+raco test examples/test/                       # the example harnesses
+racket examples/test/01-train-regression.rkt   # run one example's output
 ```
 
-`nix build` runs both the package tests and the fast assertion-backed examples
-under `examples/`. Longer narrative demos stay manually runnable.
+`nix build` runs both the package tests and the example harnesses under
+`examples/test/`. Each `examples/NN-name.rkt` is a literate `scribble/lp2`
+program woven into the docs; its runner and checks live in the matching
+`examples/test/NN-name.rkt`.
 
 Every new public API or user-visible feature should land with an
 example-backed E2E test unless that is impractical for runtime, platform, or

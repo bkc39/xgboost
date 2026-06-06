@@ -204,21 +204,10 @@
             checkPhase = ''
               runHook preCheck
               raco test ./xgboost/
-              raco test \
-                examples/11-global-apis.rkt \
-                examples/12-dmatrix-constructors.rkt \
-                examples/13-high-level-root-api.rkt \
-                examples/14-dmatrix-metadata.rkt \
-                examples/15-dmatrix-slicing-binary.rkt \
-                examples/16-quantile-cuts.rkt \
-                examples/17-booster-lifecycle-config.rkt \
-                examples/18-booster-attrs.rkt \
-                examples/19-booster-dumps-feature-scores.rkt \
-                examples/20-inplace-predict-dense.rkt \
-                examples/21-inplace-predict-csr.rkt \
-                examples/22-inplace-predict-columnar.rkt \
-                examples/23-custom-objective.rkt \
-                examples/26-booster-snapshot.rkt
+              # Each examples/NN-name.rkt is a literate scribble/lp2 program;
+              # its runner + RackUnit checks live in examples/test/NN-name.rkt.
+              # The CUDA harnesses self-skip when no GPU is available.
+              raco test examples/test/
               runHook postCheck
             '';
 

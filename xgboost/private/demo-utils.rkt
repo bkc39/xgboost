@@ -16,6 +16,9 @@
          racket/runtime-path)
 
 (provide load-iris
+         load-diabetes
+         load-bikes
+         load-veteran
          train-test-split)
 
 ;; The classic UCI iris dataset.  We try the network first and fall back to a
@@ -62,6 +65,47 @@
   (define text (or (try-download iris-url)
                    (call-with-input-file iris-fallback port->string)))
   (parse-iris text))
+
+;; The following loaders read committed copies of three small public
+;; regression/survival datasets that several objective-focused examples share.
+;; Unlike iris these are read straight from disk (no network); the bundled file
+;; is the source of truth.  Each returns the data rows with the header dropped,
+;; leaving the per-example feature/label shaping to the example itself.
+
+(define-runtime-path diabetes-file "data/diabetes.tsv")
+(define-runtime-path bikes-file    "data/bike-sharing-daily.csv")
+(define-runtime-path veteran-file  "data/veteran.csv")
+
+;; Read a delimited text file into rows of raw string cells, dropping the header
+;; row and tolerating either LF or CRLF line endings.
+(define (read-delimited path sep)
+  (define text (call-with-input-file path port->string))
+  (define rows
+    (for/list ([line (in-list (regexp-split #rx"[\r\n]+" text))]
+               #:when (positive? (string-length (string-trim line))))
+      (string-split line sep)))
+  (cdr rows))
+
+;; load-diabetes : -> (listof (listof real?))
+;; The Stanford LARS diabetes dataset (442 rows): 10 features then the
+;; continuous target Y.  Tab-separated.
+(define (load-diabetes)
+  (for/list ([r (in-list (read-delimited diabetes-file "\t"))])
+    (map string->number r)))
+
+;; load-bikes : -> (listof (listof real?))
+;; UCI Bike Sharing daily counts (731 rows, file/chronological order): 11
+;; features then the daily count `cnt`.  Comma-separated.
+(define (load-bikes)
+  (for/list ([r (in-list (read-delimited bikes-file ","))])
+    (map string->number r)))
+
+;; load-veteran : -> (listof (listof string?))
+;; Veterans' lung-cancer survival data (137 rows) as raw string cells, since
+;; the `celltype` column is categorical and the example one-hot-encodes it.
+;; Columns: rownames trt celltype time status karno diagtime age prior.
+(define (load-veteran)
+  (read-delimited veteran-file ","))
 
 ;; train-test-split : X y [#:test-size frac] [#:seed seed]
 ;;                 -> (values X-train X-test y-train y-test)
