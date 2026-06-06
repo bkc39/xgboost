@@ -73,6 +73,6 @@ documents by descending score to get the ranking.
 ]
 
 To measure quality, compute a ranking metric such as nDCG per query and average
-across queries. A fully worked version — synthesizing graded-relevance queries,
-training @racket["rank:ndcg"], and asserting a high held-out nDCG — is
-@filepath{examples/29-learning-to-rank.rkt} in the package source.
+across queries. The @secref["ex-learning-to-rank"] example is a fully worked
+version — synthesizing graded-relevance queries, training @racket["rank:ndcg"],
+and asserting a high held-out nDCG.

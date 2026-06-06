@@ -1,94 +1,54 @@
-#lang racket/base
+#lang scribble/lp2
 
-;; CUDA-accelerated binary classification training.
-;;
-;; Trains the same synthetic dataset as examples/02-train-classifier.rkt but
-;; with device=cuda and tree_method=hist, delegating tree construction to the GPU.
-;;
-;; Requires a CUDA-enabled libxgbcompat (built with ./scripts/build-so.sh linux-cuda
-;; or nix build .#cpp-cuda) and a physical NVIDIA GPU at runtime.
-;;
-;; Run from the repo root:
-;;   nix develop .#cuda --command racket examples/25-cuda-classification.rkt
+@(require (for-label ffi/vector
+                     racket/base
+                     xgboost))
 
+@section[#:tag "ex-cuda-classification"]{CUDA classification}
+
+The GPU counterpart of @secref["ex-train-classifier"]: the same two
+well-separated clusters and the same high-level @racket[train] /
+@racket[predict], with @racket["device=cuda"] passed through @racket[#:params].
+As with @secref["ex-cuda-regression"], it needs a CUDA-enabled native library and
+a physical GPU, and @racket[cuda-available?] gates the work so it skips on
+CPU-only builds.
+
+@chunk[<r25-require>
 (require ffi/vector
-         racket/format
-         (only-in xgboost cuda-available?)
-         xgboost/foreign)
+         xgboost)]
 
-(provide run-example cuda-available?)
+@chunk[<r25-provide>
+(provide run-example cuda-available?)]
 
+@chunk[<r25-run>
 (define features
-  (f32vector 0.1 0.2 0.1 0.0
-             5.0 4.0 5.5 6.0
-             0.3 0.5 0.1 0.2
-             4.5 5.0 4.0 5.5
-             0.0 0.1 0.2 0.0
-             6.0 5.5 6.5 5.0
-             0.4 0.3 0.2 0.5
-             5.5 6.0 4.5 5.0
-             0.2 0.1 0.3 0.1
-             4.0 4.5 5.0 4.0))
-
+  (f32vector 0.1 0.2 0.1 0.0   5.0 4.0 5.5 6.0   0.3 0.5 0.1 0.2   4.5 5.0 4.0 5.5
+             0.0 0.1 0.2 0.0   6.0 5.5 6.5 5.0   0.4 0.3 0.2 0.5   5.5 6.0 4.5 5.0
+             0.2 0.1 0.3 0.1   4.0 4.5 5.0 4.0))
 (define labels (f32vector 0.0 1.0 0.0 1.0 0.0 1.0 0.0 1.0 0.0 1.0))
 
 (define (run-example)
-  (define dtrain (dmatrix-create-from-mat features 10 4))
-  (dmatrix-set-float-info! dtrain "label" labels)
-
-  (define booster (booster-create (list dtrain)))
-  (booster-set-param! booster "device"      "cuda")
-  (booster-set-param! booster "tree_method" "hist")
-  (booster-set-param! booster "objective"   "binary:logistic")
-  (booster-set-param! booster "max_depth"   "3")
-  (booster-set-param! booster "eta"         "0.3")
-  (booster-set-param! booster "verbosity"   "0")
-
-  (define rounds 30)
-  (for ([iter (in-range rounds)])
-    (booster-update-one-iter! booster iter dtrain))
-
-  (define probs (booster-predict booster dtrain))
+  (define dtrain (make-dmatrix features #:nrow 10 #:ncol 4 #:labels labels))
+  (define booster
+    (train dtrain
+           #:objective "binary:logistic"
+           #:params '((device . "cuda") (tree_method . "hist"))
+           #:max-depth 3 #:eta 0.3 #:verbosity 0 #:rounds 30))
+  (define probs (predict booster dtrain #:as 'f32vector))
   (define n (f32vector-length labels))
-
-  (define all-valid-probs?
-    (for/and ([i (in-range n)])
-      (<= 0.0 (f32vector-ref probs i) 1.0)))
-
   (define correct
     (for/sum ([i (in-range n)])
-      (define truth (inexact->exact (round (f32vector-ref labels i))))
-      (define pred  (if (> (f32vector-ref probs i) 0.5) 1 0))
-      (if (= pred truth) 1 0)))
+      (if (= (if (> (f32vector-ref probs i) 0.5) 1 0)
+             (inexact->exact (round (f32vector-ref labels i)))) 1 0)))
+  (hash 'prediction-count n
+        'all-valid-probs? (for/and ([i (in-range n)]) (<= 0.0 (f32vector-ref probs i) 1.0))
+        'correct correct 'accuracy (/ correct n) 'perfect? (= correct n)))]
 
-  (define result
-    (hash 'prediction-count  n
-          'all-valid-probs?  all-valid-probs?
-          'correct           correct
-          'accuracy          (/ correct n)
-          'perfect?          (= correct n)))
+The harness @filepath{test/25-cuda-classification.rkt} runs the example only when
+@racket[cuda-available?] is true, printing accuracy and asserting the clusters
+separate perfectly; on CPU-only builds it prints a skip notice.
 
-  result)
-
-(module+ main
-  (cond
-    [(cuda-available?)
-     (define result (run-example))
-     (printf "CUDA classification predictions: ~a\n"
-             (hash-ref result 'prediction-count))
-     (printf "accuracy: ~a/~a (~a%%)\n"
-             (hash-ref result 'correct)
-             (hash-ref result 'prediction-count)
-             (~r (* 100 (hash-ref result 'accuracy)) #:precision '(= 1)))
-     (printf "perfect separation: ~a\n" (hash-ref result 'perfect?))]
-    [else
-     (printf "CUDA not available in this build; skipping.\n")]))
-
-(module+ test
-  (require rackunit)
-
-  (when (cuda-available?)
-    (define result (run-example))
-    (check-equal? (hash-ref result 'prediction-count) 10)
-    (check-true   (hash-ref result 'all-valid-probs?))
-    (check-true   (hash-ref result 'perfect?))))
+@chunk[<*>
+  <r25-require>
+  <r25-provide>
+  <r25-run>]

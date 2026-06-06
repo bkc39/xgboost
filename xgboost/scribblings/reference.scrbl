@@ -564,6 +564,19 @@ repository; if the network is unavailable, a copy bundled with the package is
 used instead, so the examples run offline.
 }
 
+@deftogether[(@defproc[(load-diabetes) (listof (listof real?))]
+              @defproc[(load-bikes) (listof (listof real?))]
+              @defproc[(load-veteran) (listof (listof string?))])]{
+Read bundled copies of three small public datasets shared by the
+objective-focused examples, returning the data rows with the header dropped.
+@racket[load-diabetes] gives the Stanford LARS diabetes rows (ten features then
+the continuous target). @racket[load-bikes] gives the UCI Bike Sharing daily
+rows in chronological order (eleven features then the count @tt{cnt}).
+@racket[load-veteran] gives the Veterans' lung-cancer rows as raw string cells,
+since the @tt{celltype} column is categorical. Unlike @racket[load-iris] these
+read straight from the bundled file with no network access.
+}
+
 @defproc[(train-test-split [X (listof (listof real?))]
                            [y (listof exact-nonnegative-integer?)]
                            [#:test-size test-size (real-in 0 1) 0.2]

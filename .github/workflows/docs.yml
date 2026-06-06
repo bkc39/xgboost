@@ -21,8 +21,13 @@ jobs:
           variant: 'CS'
           distribution: 'full'
       - name: Render Scribble docs
+        # The literate Examples chapter cross-references the `xgboost` collection
+        # by name (`(for-label xgboost)`, and `(require xgboost)` inside the woven
+        # example code). Put the repo root on PLTCOLLECTS so that name resolves to
+        # ./xgboost without installing the package — rendering only needs the
+        # bindings for label phase, not the native library.
         run: |
-          raco scribble --html \
+          PLTCOLLECTS="$GITHUB_WORKSPACE:" raco scribble --html \
             --dest _site \
             ++xref-in setup/xref load-collections-xref \
             --redirect-main https://docs.racket-lang.org/ \

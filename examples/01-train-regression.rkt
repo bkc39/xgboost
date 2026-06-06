@@ -1,65 +1,84 @@
-#lang racket/base
+#lang scribble/lp2
 
-;; End-to-end Racket-driven regression training run.
-;;
-;; Build a small synthetic dataset, train a gradient-boosted regressor, and
-;; print predictions vs. labels alongside training MSE.
-;;
-;; Run from the repo root:
-;;   nix develop --command racket examples/01-train-regression.rkt
+@(require (for-label ffi/vector
+                     racket/base
+                     xgboost))
 
+@section[#:tag "ex-train-regression"]{Training a regressor}
+
+With a @tech{DMatrix} in hand, training is one call. This example fits a
+gradient-boosted regression model end to end: build a small synthetic dataset,
+@racket[train] a booster, @racket[predict] on the same rows, and compare the
+predictions to the labels.
+
+The labels were chosen to follow roughly @tt{2·x₀ + x₁ − x₂} with a touch of
+noise --- a relationship a tree booster fits easily.
+
+@chunk[<r01-require>
 (require ffi/vector
-         racket/format
-         xgboost)
+         xgboost)]
 
-;; 8 rows x 3 features.  Labels were chosen to be roughly
-;; `2*x0 + x1 - x2` plus a touch of noise — a tree booster fits this easily.
-(define features
-  (f32vector 1.0 2.0 0.5
-             2.0 1.0 1.5
-             3.0 0.5 0.0
-             0.5 3.0 2.0
-             4.0 2.0 1.0
-             1.5 1.5 0.5
-             2.5 3.5 1.5
-             0.0 1.0 0.0))
+@chunk[<r01-provide>
+(provide run-example)]
 
-(define labels (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0))
+@bold{The data.} Eight rows of three features, with the regression target in
+@racket[labels]:
 
-(define dtrain
-  (make-dmatrix features #:nrow 8 #:ncol 3 #:labels labels))
+@chunk[<r01-data>
+  (define features
+    (f32vector 1.0 2.0 0.5
+               2.0 1.0 1.5
+               3.0 0.5 0.0
+               0.5 3.0 2.0
+               4.0 2.0 1.0
+               1.5 1.5 0.5
+               2.5 3.5 1.5
+               0.0 1.0 0.0))
+  (define labels (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0))
+  (define dtrain
+    (make-dmatrix features #:nrow 8 #:ncol 3 #:labels labels))]
 
-(printf "training data:\n")
-(dmatrix-show dtrain)
-(newline)
+@bold{Training.} @racket[train] runs the boosting loop. The objective
+@racket["reg:squarederror"] is ordinary least-squares regression; @racket[#:eta]
+is the learning rate and @racket[#:max-depth] caps each tree. We keep
+@racket[#:verbosity] at @racket[0] so the run is quiet:
 
-(define rounds 50)
-(define booster
-  (train dtrain
-         #:objective "reg:squarederror"
-         #:max-depth 3
-         #:eta 0.1
-         #:verbosity 0
-         #:rounds rounds))
+@chunk[<r01-train>
+  (define booster
+    (train dtrain
+           #:objective "reg:squarederror"
+           #:max-depth 3
+           #:eta 0.1
+           #:verbosity 0
+           #:rounds 50))]
 
-(define preds (predict booster dtrain #:as 'f32vector))
+@bold{Prediction.} @racket[predict] with @racket[#:as 'f32vector] returns the
+per-row predictions as an @racket[f32vector]:
 
-(define (fmt v) (~r v #:precision '(= 4) #:min-width 8))
-(define (col s) (~a s #:width 8 #:align 'right))
+@chunk[<r01-predict>
+  (define preds (predict booster dtrain #:as 'f32vector))]
 
-(printf "predictions vs. labels (~a rounds):\n" rounds)
-(printf "  ~a  ~a  ~a\n" (~a "i" #:width 3) (col "label") (col "pred"))
-(define n (f32vector-length labels))
-(for ([i (in-range n)])
-  (printf "  ~a  ~a  ~a\n"
-          (~a i #:width 3)
-          (fmt (f32vector-ref labels i))
-          (fmt (f32vector-ref preds i))))
+@racket[run-example] returns the booster, the training matrix, and those
+predictions. The companion harness @filepath{test/01-train-regression.rkt}
+prints a predictions-vs-labels table, reports the training MSE, and its
+@racket[test] submodule asserts the model fits (run with @exec{raco test}).
+After 50 rounds the predictions track the labels closely:
 
-(define mse
-  (/ (for/sum ([i (in-range n)])
-       (define d (- (f32vector-ref preds i) (f32vector-ref labels i)))
-       (* d d))
-     n))
+@racketblock[
+(code:comment "i    label      pred")
+(code:comment "0   3.5000    3.5012")
+(code:comment "...                 ")
+(code:comment "training MSE ≈ 0.000…")
+]
 
-(printf "\ntraining MSE: ~a\n" (~r mse #:precision '(= 6)))
+@chunk[<r01-run>
+(define (run-example)
+  <r01-data>
+  <r01-train>
+  <r01-predict>
+  (values booster dtrain preds))]
+
+@chunk[<*>
+  <r01-require>
+  <r01-provide>
+  <r01-run>]

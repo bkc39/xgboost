@@ -1,75 +1,85 @@
-#lang racket/base
+#lang scribble/lp2
 
-;; Train a regressor while watching its loss on a held-out eval set.
-;; Each round emits a metric line like:
-;;   [iter] train-rmse:... eval-rmse:...
-;; that we parse with `parse-eval-line` and print as a small table.
-;;
-;; Run from the repo root:
-;;   nix develop --command racket examples/05-train-with-eval.rkt
+@(require (for-label ffi/vector
+                     racket/base
+                     xgboost))
 
+@section[#:tag "ex-train-with-eval"]{Watching an evaluation set}
+
+Rather than letting @racket[train] run the whole boosting loop, you can drive it
+one round at a time and inspect a held-out metric after each --- the basis for
+logging, early stopping, or custom schedules. This example trains a regressor
+while watching RMSE on both the training and an evaluation split.
+
+The two pieces are @racket[booster-update-one-iter!] (do one boosting round) and
+@racket[eval-one-iter] (return XGBoost's metric line, which
+@racket[parse-eval-line] turns into a hash).
+
+@chunk[<r05-require>
 (require ffi/vector
-         racket/format
-         xgboost)
+         xgboost)]
 
-;; Two non-overlapping splits of an y ≈ 2*x0 + x1 - x2 dataset.
+@chunk[<r05-provide>
+(provide run-example)]
 
-(define train-features
-  (f32vector 1.0 2.0 0.5
-             2.0 1.0 1.5
-             3.0 0.5 0.0
-             0.5 3.0 2.0
-             4.0 2.0 1.0
-             1.5 1.5 0.5
-             2.5 3.5 1.5
-             0.0 1.0 0.0))
-(define train-labels (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0))
+@bold{The data.} Two non-overlapping splits of a @tt{y ≈ 2·x₀ + x₁ − x₂}
+dataset --- eight training rows, four evaluation rows:
 
-(define eval-features
-  (f32vector 2.0 0.5 0.5
-             1.0 1.0 1.0
-             3.5 1.0 0.5
-             0.5 0.5 0.5))
-(define eval-labels (f32vector 4.0 2.0 7.5 1.0))
+@chunk[<r05-data>
+  (define dtrain
+    (make-dmatrix (f32vector 1.0 2.0 0.5   2.0 1.0 1.5   3.0 0.5 0.0
+                             0.5 3.0 2.0   4.0 2.0 1.0   1.5 1.5 0.5
+                             2.5 3.5 1.5   0.0 1.0 0.0)
+                  #:nrow 8 #:ncol 3
+                  #:labels (f32vector 3.5 3.5 6.5 2.0 9.0 4.0 7.0 1.0)))
+  (define deval
+    (make-dmatrix (f32vector 2.0 0.5 0.5   1.0 1.0 1.0
+                             3.5 1.0 0.5   0.5 0.5 0.5)
+                  #:nrow 4 #:ncol 3
+                  #:labels (f32vector 4.0 2.0 7.5 1.0)))]
 
-(define dtrain
-  (make-dmatrix train-features #:nrow 8 #:ncol 3 #:labels train-labels))
-(define deval
-  (make-dmatrix eval-features  #:nrow 4 #:ncol 3 #:labels eval-labels))
+@bold{Set up the booster.} Training with @racket[#:rounds 0] and an
+@racket[#:evals] list builds the booster and binds both matrices into its cache
+(so the GC keeps them alive) without doing any boosting yet:
 
-;; Manual iteration so we can log eval metrics each round.  Bind both
-;; dtrain and deval into the booster cache up front so the GC keeps them
-;; alive through the loop.
-(define booster
-  (train dtrain
-         #:evals (list (cons "eval" deval))
-         #:objective "reg:squarederror"
-         #:max-depth 3
-         #:eta 0.1
-         #:verbosity 0
-         #:rounds 0))
+@chunk[<r05-setup>
+  (define booster
+    (train dtrain
+           #:evals (list (cons "eval" deval))
+           #:objective "reg:squarederror"
+           #:max-depth 3
+           #:eta 0.1
+           #:verbosity 0
+           #:rounds 0))]
 
-(define eval-set (list (cons "train" dtrain) (cons "eval" deval)))
-(define rounds 30)
+@bold{The loop.} Each round, advance the booster and record the parsed metrics
+for both watched matrices. @racket[run-example] returns the booster and the
+per-round history:
 
-(define (col s) (~a s #:width 10 #:align 'right))
-(define (fmt v) (~r v #:precision '(= 4) #:min-width 10))
+@chunk[<r05-loop>
+  (define eval-set (list (cons "train" dtrain) (cons "eval" deval)))
+  (define history
+    (for/list ([iter (in-range 30)])
+      (booster-update-one-iter! booster iter dtrain)
+      (parse-eval-line (eval-one-iter booster iter eval-set))))]
 
-(printf "~a  ~a  ~a\n"
-        (~a "iter" #:width 4)
-        (col "train-rmse") (col "eval-rmse"))
+The harness @filepath{test/05-train-with-eval.rkt} prints the per-round table
+and the final metrics, and asserts the evaluation RMSE falls over training:
 
-(for ([iter (in-range rounds)])
-  (booster-update-one-iter! booster iter dtrain)
-  (define metrics (parse-eval-line (eval-one-iter booster iter eval-set)))
-  (printf "~a  ~a  ~a\n"
-          (~a iter #:width 4)
-          (fmt (hash-ref metrics "train-rmse"))
-          (fmt (hash-ref metrics "eval-rmse"))))
+@racketblock[
+(code:comment "iter  train-rmse   eval-rmse")
+(code:comment "   0      3.8019      3.6960")
+(code:comment "  29      0.0530      0.3327")
+]
 
-(define final
-  (parse-eval-line (eval-one-iter booster (- rounds 1) eval-set)))
-(printf "\nfinal train-rmse: ~a\n"
-        (~r (hash-ref final "train-rmse") #:precision '(= 6)))
-(printf "final  eval-rmse: ~a\n"
-        (~r (hash-ref final "eval-rmse")  #:precision '(= 6)))
+@chunk[<r05-run>
+(define (run-example)
+  <r05-data>
+  <r05-setup>
+  <r05-loop>
+  (values booster history))]
+
+@chunk[<*>
+  <r05-require>
+  <r05-provide>
+  <r05-run>]

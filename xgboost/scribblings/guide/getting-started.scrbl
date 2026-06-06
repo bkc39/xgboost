@@ -35,5 +35,5 @@ the data, split it, fit a booster, and predict. @racket[load-iris] and
 (define preds (predict bst (make-dmatrix X-test)))
 ]
 
-A complete, runnable, assertion-backed version is
-@filepath{examples/27-get-started.rkt} in the package source.
+A complete, runnable, assertion-backed version is the @secref["ex-get-started"]
+example.

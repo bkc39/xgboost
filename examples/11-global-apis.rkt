@@ -1,57 +1,45 @@
-#lang racket/base
+#lang scribble/lp2
 
-(require json
-         racket/port
-         xgboost)
+@(require (for-label racket/base
+                     xgboost))
 
-(provide run-example)
+@section[#:tag "ex-global-apis"]{Global and process APIs}
 
-(define (json-string->jsexpr s)
-  (with-input-from-string s read-json))
+A few APIs are process-global rather than per-model: @racket[xgboost-build-info]
+reports how the native library was compiled, and
+@racket[xgboost-get-global-config] / @racket[xgboost-set-global-config!] read and
+write process-wide settings as JSON. This example reads the build info, flips the
+global verbosity inside a @racket[dynamic-wind] (restoring it afterward), and
+registers a no-op log callback with @racket[xgboost-register-log-callback!].
 
-(define (json-object-string? s)
-  (hash? (json-string->jsexpr s)))
+@chunk[<r11-require>
+(require xgboost)]
 
+@chunk[<r11-provide>
+(provide run-example)]
+
+@chunk[<r11-run>
 (define (run-example)
   (define build-info (xgboost-build-info))
   (define before-config (xgboost-get-global-config))
   (define during-config #f)
-
   (dynamic-wind
     void
     (lambda ()
       (xgboost-set-global-config! "{\"verbosity\":0}")
       (set! during-config (xgboost-get-global-config))
       (xgboost-register-log-callback! (lambda (_msg) (void))))
-    (lambda ()
-      (xgboost-set-global-config! before-config)))
-
-  (define after-config (xgboost-get-global-config))
+    (lambda () (xgboost-set-global-config! before-config)))
   (hash 'build-info build-info
         'before-config before-config
         'during-config during-config
-        'after-config after-config))
+        'after-config (xgboost-get-global-config)))]
 
-(module+ main
-  (define result (run-example))
-  (printf "build info JSON: ~a\n" (json-object-string? (hash-ref result 'build-info)))
-  (printf "verbosity set during example: ~a\n"
-          (hash-ref (json-string->jsexpr (hash-ref result 'during-config))
-                    'verbosity))
-  (printf "global config restored: ~a\n"
-          (equal? (json-string->jsexpr (hash-ref result 'before-config))
-                  (json-string->jsexpr (hash-ref result 'after-config)))))
+The harness @filepath{test/11-global-apis.rkt} parses each returned string and
+asserts the build info and configs are JSON objects, the verbosity took effect,
+and the global config was restored.
 
-(module+ test
-  (require rackunit)
-
-  (define result (run-example))
-  (check-true (json-object-string? (hash-ref result 'build-info)))
-  (check-true (json-object-string? (hash-ref result 'before-config)))
-  (check-true (json-object-string? (hash-ref result 'during-config)))
-  (check-true (json-object-string? (hash-ref result 'after-config)))
-  (check-equal? (hash-ref (json-string->jsexpr (hash-ref result 'during-config))
-                          'verbosity)
-                0)
-  (check-equal? (json-string->jsexpr (hash-ref result 'after-config))
-                (json-string->jsexpr (hash-ref result 'before-config))))
+@chunk[<*>
+  <r11-require>
+  <r11-provide>
+  <r11-run>]

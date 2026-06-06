@@ -1,9 +1,23 @@
-#lang racket/base
+#lang scribble/lp2
 
-(require xgboost)
+@(require (for-label racket/base
+                     xgboost))
 
-(provide run-example)
+@section[#:tag "ex-booster-attrs"]{Booster attributes}
 
+A booster carries an arbitrary string→string attribute dictionary --- handy for
+stamping a model with provenance. This example sets two attributes with
+@racket[booster-set-attr!], reads them back with @racket[booster-attr], lists the
+keys with @racket[booster-attr-names], then removes one with
+@racket[booster-delete-attr!] (a missing key reads back as @racket[#f]).
+
+@chunk[<r18-require>
+(require xgboost)]
+
+@chunk[<r18-provide>
+(provide run-example)]
+
+@chunk[<r18-run>
 (define (run-example)
   (define b (make-booster))
   (booster-set-attr! b "owner" "racket")
@@ -15,23 +29,12 @@
   (booster-delete-attr! b "purpose")
   (hash 'before-delete before-delete
         'purpose-after-delete (booster-attr b "purpose")
-        'names-after-delete (booster-attr-names b)))
+        'names-after-delete (booster-attr-names b)))]
 
-(module+ main
-  (define result (run-example))
-  (define before (hash-ref result 'before-delete))
-  (printf "owner: ~a\n" (hash-ref before 'owner))
-  (printf "attrs before delete: ~a\n" (hash-ref before 'names))
-  (printf "purpose after delete: ~a\n"
-          (hash-ref result 'purpose-after-delete)))
+The harness @filepath{test/18-booster-attrs.rkt} prints the attributes and
+asserts the round-trip and the post-delete state.
 
-(module+ test
-  (require rackunit)
-
-  (define result (run-example))
-  (define before (hash-ref result 'before-delete))
-  (check-equal? (hash-ref before 'owner) "racket")
-  (check-equal? (hash-ref before 'purpose) "example")
-  (check-equal? (hash-ref before 'names) '("owner" "purpose"))
-  (check-false (hash-ref result 'purpose-after-delete))
-  (check-equal? (hash-ref result 'names-after-delete) '("owner")))
+@chunk[<*>
+  <r18-require>
+  <r18-provide>
+  <r18-run>]

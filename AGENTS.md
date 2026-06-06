@@ -28,24 +28,9 @@ cmake --build cpp/build
 ctest --test-dir cpp/build --output-on-failure
 
 raco test xgboost/
-raco test \
-  examples/11-global-apis.rkt \
-  examples/12-dmatrix-constructors.rkt \
-  examples/13-high-level-root-api.rkt \
-  examples/14-dmatrix-metadata.rkt \
-  examples/15-dmatrix-slicing-binary.rkt \
-  examples/16-quantile-cuts.rkt \
-  examples/17-booster-lifecycle-config.rkt \
-  examples/18-booster-attrs.rkt \
-  examples/19-booster-dumps-feature-scores.rkt \
-  examples/20-inplace-predict-dense.rkt \
-  examples/21-inplace-predict-csr.rkt \
-  examples/22-inplace-predict-columnar.rkt \
-  examples/23-custom-objective.rkt \
-  examples/26-booster-snapshot.rkt \
-  examples/27-get-started.rkt \
-  examples/28-param-recipes.rkt \
-  examples/29-learning-to-rank.rkt
+# Each examples/NN-name.rkt is a literate scribble/lp2 program; its runner +
+# RackUnit checks live in examples/test/NN-name.rkt (CUDA self-skips on CPU).
+raco test examples/test/
 racket -l xgboost
 ```
 
@@ -85,10 +70,10 @@ raco pkg install --name xgboost ./xgboost
 On Linux the pre-installer prefers a CUDA candidate if present, then falls back
 to the CPU one.
 
-The default `nix build` runs both `raco test ./xgboost/` and
-the selected fast assertion-backed examples under `examples/`. Longer
-narrative demos should stay manually runnable, but they are not all part of
-the default package check.
+The default `nix build` runs both `raco test ./xgboost/` and the example
+harnesses under `examples/test/` (every `examples/NN-name.rkt` is a literate
+`scribble/lp2` program; its runner and RackUnit checks live in the matching
+`examples/test/NN-name.rkt`). The CUDA harnesses self-skip on CPU-only builds.
 
 To force re-provisioning of the dev-shell Racket user scope, remove `.racket-user/`.
 
@@ -114,21 +99,7 @@ nix develop --command bash -c "
         xgboost/native-libs/libgomp.so.1
   raco pkg install --name xgboost ./xgboost
   raco test xgboost/
-  raco test \
-    examples/11-global-apis.rkt \
-    examples/12-dmatrix-constructors.rkt \
-    examples/13-high-level-root-api.rkt \
-    examples/14-dmatrix-metadata.rkt \
-    examples/15-dmatrix-slicing-binary.rkt \
-    examples/16-quantile-cuts.rkt \
-    examples/17-booster-lifecycle-config.rkt \
-    examples/18-booster-attrs.rkt \
-    examples/19-booster-dumps-feature-scores.rkt \
-    examples/20-inplace-predict-dense.rkt \
-    examples/21-inplace-predict-csr.rkt \
-    examples/22-inplace-predict-columnar.rkt \
-    examples/23-custom-objective.rkt \
-    examples/26-booster-snapshot.rkt
+  raco test examples/test/
 "
 ```
 
@@ -141,8 +112,8 @@ from the catalog would follow. Tests must pass with no Nix store paths on
 
 ```bash
 nix develop .#cuda
-racket examples/24-cuda-regression.rkt
-racket examples/25-cuda-classification.rkt
+racket examples/test/24-cuda-regression.rkt
+racket examples/test/25-cuda-classification.rkt
 ```
 
 ## Architecture
@@ -175,9 +146,11 @@ in sub-collection modules (target ≤ 500 lines/file).
 - `xgboost/tests/*.rkt` - cross-cutting integration tests; module-local unit
   tests live in `module+ test` submodules.
 - `xgboost/private/install-xgboost-native.rkt` - copies `libxgbcompat.*` from `$XGBOOST_NATIVE_LIB_PATH/lib` into `native-libs/`.
-- Selected files in `examples/` are assertion-backed examples; each exports
-  `run-example`, prints concise output from `module+ main`, and verifies
-  behavior from `module+ test`.
+- `examples/NN-name.rkt` - literate `scribble/lp2` programs woven into the
+  Examples chapter; each exports a `run-example` thunk and does no top-level
+  work. The runner (`module+ main`) and RackUnit checks (`module+ test`) live in
+  the companion `examples/test/NN-name.rkt` (lp2 submodules can't see chunk-level
+  bindings). `examples/test/info.rkt` carries the per-test timeouts.
 
 Every new public API or user-visible feature should include an
 example-backed E2E test in the same change set unless that is impractical.
@@ -195,8 +168,8 @@ nix run .#copy-native-libs-cuda
 nix develop .#cuda
 
 # Run CUDA examples (requires a physical NVIDIA GPU)
-racket examples/24-cuda-regression.rkt
-racket examples/25-cuda-classification.rkt
+racket examples/test/24-cuda-regression.rkt
+racket examples/test/25-cuda-classification.rkt
 ```
 
 CUDA examples check availability via `xgboost-build-info` (JSON key `USE_CUDA`) and skip
