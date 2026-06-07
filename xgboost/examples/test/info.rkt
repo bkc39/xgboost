@@ -7,7 +7,19 @@
 ;; Test harnesses for the literate `examples/*.rkt` programs.  Each `NN-name.rkt`
 ;; here requires its `#lang scribble/lp2` sibling `../NN-name.rkt` (which exports
 ;; a `run-example` thunk), drives it from `(module+ main ...)`, and checks it from
-;; `(module+ test ...)`.  Run the whole suite with `raco test examples/test/`.
+;; `(module+ test ...)`.  Run the whole suite with `raco test xgboost/examples/test/`.
+
+;; The CUDA harnesses (24, 25) self-skip on CPU-only builds, but reaching that
+;; decision calls `cuda-available?`, which makes the native XGBoost write
+;; "XGBoost is not compiled with CUDA support" to stderr on a CPU build.  Under
+;; `raco test --drdr` (used by pkg-build.racket-lang.org) any stderr write counts
+;; as a failure, and this one comes from native fd 2 so it can't be captured
+;; Racket-side.  They do nothing useful without a GPU, so omit them from
+;; `raco test`; run them on a GPU explicitly with
+;; `racket xgboost/examples/test/24-cuda-regression.rkt`.
+(define test-omit-paths
+  '("24-cuda-regression.rkt"
+    "25-cuda-classification.rkt"))
 
 ;; The native-backed demos can be slow on a loaded/`--drdr` builder; give them the
 ;; same generous per-test headroom as the package integration tests.

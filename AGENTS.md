@@ -28,9 +28,10 @@ cmake --build cpp/build
 ctest --test-dir cpp/build --output-on-failure
 
 raco test xgboost/
-# Each examples/NN-name.rkt is a literate scribble/lp2 program; its runner +
-# RackUnit checks live in examples/test/NN-name.rkt (CUDA self-skips on CPU).
-raco test examples/test/
+# Each xgboost/examples/NN-name.rkt is a literate scribble/lp2 program; its
+# runner + RackUnit checks live in xgboost/examples/test/NN-name.rkt (CUDA
+# self-skips on CPU).
+raco test xgboost/examples/test/
 racket -l xgboost
 ```
 
@@ -71,9 +72,10 @@ On Linux the pre-installer prefers a CUDA candidate if present, then falls back
 to the CPU one.
 
 The default `nix build` runs both `raco test ./xgboost/` and the example
-harnesses under `examples/test/` (every `examples/NN-name.rkt` is a literate
-`scribble/lp2` program; its runner and RackUnit checks live in the matching
-`examples/test/NN-name.rkt`). The CUDA harnesses self-skip on CPU-only builds.
+harnesses under `xgboost/examples/test/` (every `xgboost/examples/NN-name.rkt`
+is a literate `scribble/lp2` program; its runner and RackUnit checks live in the
+matching `xgboost/examples/test/NN-name.rkt`). The CUDA harnesses self-skip on
+CPU-only builds.
 
 To force re-provisioning of the dev-shell Racket user scope, remove `.racket-user/`.
 
@@ -99,7 +101,7 @@ nix develop --command bash -c "
         xgboost/native-libs/libgomp.so.1
   raco pkg install --name xgboost ./xgboost
   raco test xgboost/
-  raco test examples/test/
+  raco test xgboost/examples/test/
 "
 ```
 
@@ -112,8 +114,8 @@ from the catalog would follow. Tests must pass with no Nix store paths on
 
 ```bash
 nix develop .#cuda
-racket examples/test/24-cuda-regression.rkt
-racket examples/test/25-cuda-classification.rkt
+racket xgboost/examples/test/24-cuda-regression.rkt
+racket xgboost/examples/test/25-cuda-classification.rkt
 ```
 
 ## Architecture
@@ -146,11 +148,12 @@ in sub-collection modules (target ≤ 500 lines/file).
 - `xgboost/tests/*.rkt` - cross-cutting integration tests; module-local unit
   tests live in `module+ test` submodules.
 - `xgboost/private/install-xgboost-native.rkt` - copies `libxgbcompat.*` from `$XGBOOST_NATIVE_LIB_PATH/lib` into `native-libs/`.
-- `examples/NN-name.rkt` - literate `scribble/lp2` programs woven into the
-  Examples chapter; each exports a `run-example` thunk and does no top-level
+- `xgboost/examples/NN-name.rkt` - literate `scribble/lp2` programs woven into
+  the Examples chapter; each exports a `run-example` thunk and does no top-level
   work. The runner (`module+ main`) and RackUnit checks (`module+ test`) live in
-  the companion `examples/test/NN-name.rkt` (lp2 submodules can't see chunk-level
-  bindings). `examples/test/info.rkt` carries the per-test timeouts.
+  the companion `xgboost/examples/test/NN-name.rkt` (lp2 submodules can't see
+  chunk-level bindings). `xgboost/examples/test/info.rkt` carries the per-test
+  timeouts.
 
 Every new public API or user-visible feature should include an
 example-backed E2E test in the same change set unless that is impractical.
@@ -168,8 +171,8 @@ nix run .#copy-native-libs-cuda
 nix develop .#cuda
 
 # Run CUDA examples (requires a physical NVIDIA GPU)
-racket examples/test/24-cuda-regression.rkt
-racket examples/test/25-cuda-classification.rkt
+racket xgboost/examples/test/24-cuda-regression.rkt
+racket xgboost/examples/test/25-cuda-classification.rkt
 ```
 
 CUDA examples check availability via `xgboost-build-info` (JSON key `USE_CUDA`) and skip

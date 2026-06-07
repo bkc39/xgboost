@@ -204,10 +204,11 @@
             checkPhase = ''
               runHook preCheck
               raco test ./xgboost/
-              # Each examples/NN-name.rkt is a literate scribble/lp2 program;
-              # its runner + RackUnit checks live in examples/test/NN-name.rkt.
+              # Each xgboost/examples/NN-name.rkt is a literate scribble/lp2
+              # program; its runner + RackUnit checks live in
+              # xgboost/examples/test/NN-name.rkt.
               # The CUDA harnesses self-skip when no GPU is available.
-              raco test examples/test/
+              raco test xgboost/examples/test/
               runHook postCheck
             '';
 
@@ -409,7 +410,7 @@
                   --name xgboost "$PWD/xgboost"
                 raco setup --no-docs --pkgs xgboost
                 touch "$deps_stamp"
-                echo "Done. Run: racket examples/24-cuda-regression.rkt"
+                echo "Done. Run: racket xgboost/examples/24-cuda-regression.rkt"
               fi
             '';
           };
