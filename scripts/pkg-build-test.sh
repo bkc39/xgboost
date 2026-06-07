@@ -14,8 +14,11 @@ set -euo pipefail
 # the catalog can fail while our regular checks stay green. This script closes
 # that gap: run it to catch stderr/timeout regressions before the catalog does.
 #
-# It deliberately does NOT run the examples/ tests (those live at the repo root
-# and are not part of the published package, so pkg-build never sees them).
+# The literate examples now ship inside the package (xgboost/examples/), so the
+# `--package xgboost` run below also exercises xgboost/examples/test/. Before the
+# tests we render the manual from a package-only copy of xgboost/ — the same view
+# the catalog builds (source=...?path=xgboost) — so a doc @lp-include that escapes
+# the package root fails here instead of on the catalog.
 
 RACKET=$(command -v racket 2>/dev/null || true)
 RACO=$(command -v raco 2>/dev/null || true)
@@ -44,6 +47,19 @@ rm -f xgboost/native-libs/libxgbcompat.* \
 echo "--- installing the collection from candidates (no Nix, no env var) ---"
 unset XGBOOST_NATIVE_LIB_PATH || true
 "$RACO" pkg install --name xgboost ./xgboost
+
+echo "--- doc-build guard: render the manual from a package-only copy (mirrors the catalog) ---"
+# The catalog builds source=...?path=xgboost, i.e. only the xgboost/ subtree.
+# Render from an isolated copy of just xgboost/ so any out-of-package @lp-include
+# (e.g. ../../examples/...) fails here exactly as it does on pkg-build. Rendering
+# needs only label-phase bindings, so PLTCOLLECTS resolves `xgboost` to the copy
+# without the native library.
+guard_root=$(mktemp -d)
+trap 'rm -rf "$guard_root"' EXIT
+cp -R xgboost "$guard_root/xgboost"
+find "$guard_root/xgboost" -name compiled -type d -exec rm -rf {} + 2>/dev/null || true
+PLTCOLLECTS="$guard_root:" "$RACO" scribble --dest "$guard_root/doc" \
+  "$guard_root/xgboost/scribblings/xgboost.scrbl"
 
 echo "--- raco test --drdr --package xgboost (the pkg-build test step) ---"
 # -j 2 mirrors a modest builder; --drdr supplies the 90s timeout + check-stderr.

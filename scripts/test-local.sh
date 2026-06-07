@@ -18,7 +18,7 @@ echo "Using $("$RACKET" --version)"
 cd "$(dirname "$0")/.."
 
 echo "--- cleaning compiled bytecode ---"
-find xgboost examples -name "compiled" -type d -exec rm -rf {} + 2>/dev/null || true
+find xgboost -name "compiled" -type d -exec rm -rf {} + 2>/dev/null || true
 
 echo "--- removing previous xgboost install ---"
 "$RACO" pkg remove xgboost 2>/dev/null || true
@@ -37,8 +37,8 @@ echo "--- installing from candidates ---"
 echo "--- raco test xgboost/ ---"
 "$RACO" test xgboost/
 
-echo "--- examples (literate scribble/lp2; runners + checks in examples/test/) ---"
+echo "--- examples (literate scribble/lp2; runners + checks in xgboost/examples/test/) ---"
 # The CUDA harnesses (24, 25) self-skip when no GPU is available.
-"$RACO" test examples/test/
+"$RACO" test xgboost/examples/test/
 
 echo "--- all done ---"

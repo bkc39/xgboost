@@ -63,14 +63,14 @@ Run the Racket tests:
 
 ```bash
 raco test xgboost/
-raco test examples/test/                       # the example harnesses
-racket examples/test/01-train-regression.rkt   # run one example's output
+raco test xgboost/examples/test/                       # the example harnesses
+racket xgboost/examples/test/01-train-regression.rkt   # run one example's output
 ```
 
 `nix build` runs both the package tests and the example harnesses under
-`examples/test/`. Each `examples/NN-name.rkt` is a literate `scribble/lp2`
-program woven into the docs; its runner and checks live in the matching
-`examples/test/NN-name.rkt`.
+`xgboost/examples/test/`. Each `xgboost/examples/NN-name.rkt` is a literate
+`scribble/lp2` program woven into the docs; its runner and checks live in the
+matching `xgboost/examples/test/NN-name.rkt`.
 
 Every new public API or user-visible feature should land with an
 example-backed E2E test unless that is impractical for runtime, platform, or
@@ -111,7 +111,7 @@ The `Nix checks` CI workflow runs `resyntax analyze` as a gate, so run
 ## Layout
 
 - `cpp/` - C++ wrapper library (`libxgbcompat`) built with CMake, links against `pkgs.xgboost`.
-- `examples/` - runnable examples; selected fast RackUnit-backed examples run by default checks. See [`examples/README.md`](examples/README.md) for an indexed tour mapped to the upstream demos and tutorials.
+- `xgboost/examples/` - runnable examples bundled with the package; selected fast RackUnit-backed examples run by default checks. See [`xgboost/examples/README.md`](xgboost/examples/README.md) for an indexed tour mapped to the upstream demos and tutorials.
 - `xgboost/main.rkt` - high-level root API for `(require xgboost)`.
 - `xgboost/foreign.rkt` - contracted low-level Racket wrappers.
 - `xgboost/foreign/raw.rkt` - direct C FFI bindings.
