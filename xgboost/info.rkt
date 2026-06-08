@@ -6,8 +6,11 @@
 
 (define collection "xgboost")
 (define version "0.1")
-(define deps '("base" "net-lib"))
-(define build-deps '("rackunit-lib" "racket-doc" "scribble-lib"))
+;; `scribble-lib` is a runtime dep (not build-only): the in-package
+;; `examples/*.rkt` are `#lang scribble/lp2` literate programs, so their
+;; compiled form requires scribble's lp2 module language at run time.
+(define deps '("base" "net-lib" "scribble-lib"))
+(define build-deps '("rackunit-lib" "racket-doc"))
 (define scribblings '(("scribblings/xgboost.scrbl" (multi-page))))
 (define pkg-desc "Racket bindings for XGBoost")
 (define pkg-authors '("bkschemer@gmail.com"))
