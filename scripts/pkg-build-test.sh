@@ -46,7 +46,9 @@ rm -f xgboost/native-libs/libxgbcompat.* \
 
 echo "--- installing the collection from candidates (no Nix, no env var) ---"
 unset XGBOOST_NATIVE_LIB_PATH || true
-"$RACO" pkg install --name xgboost ./xgboost
+# --auto installs declared deps (e.g. polars) non-interactively; the catalog
+# build host resolves them the same way.
+"$RACO" pkg install --auto --name xgboost ./xgboost
 
 echo "--- doc-build guard: render the manual from a package-only copy (mirrors the catalog) ---"
 # The catalog builds source=...?path=xgboost, i.e. only the xgboost/ subtree.
