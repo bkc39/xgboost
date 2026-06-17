@@ -9,7 +9,9 @@
 ;; `scribble-lib` is a runtime dep (not build-only): the in-package
 ;; `examples/*.rkt` are `#lang scribble/lp2` literate programs, so their
 ;; compiled form requires scribble's lp2 module language at run time.
-(define deps '("base" "net-lib" "scribble-lib"))
+;; `polars` provides the DataFrame bindings that `core/dataframe.rkt` converts
+;; into DMatrix inputs.
+(define deps '("base" "net-lib" "scribble-lib" "polars"))
 (define build-deps '("rackunit-lib" "racket-doc"))
 (define scribblings '(("scribblings/xgboost.scrbl" (multi-page))))
 (define pkg-desc "Racket bindings for XGBoost")
