@@ -34,12 +34,12 @@ echo "--- removing previous xgboost install ---"
 "$RACO" pkg remove xgboost 2>/dev/null || true
 
 echo "--- clearing staged native libs (force a clean candidate install) ---"
-rm -f xgboost/native-libs/libxgbcompat.* \
-      xgboost/native-libs/libxgboost.*   \
-      xgboost/native-libs/libomp.*       \
-      xgboost/native-libs/libgomp.*      \
-      xgboost/native-libs/libstdc++.*    \
-      xgboost/native-libs/libxgbshim.*
+rm -f xgboost/xgboost/native-libs/libxgbcompat.* \
+      xgboost/xgboost/native-libs/libxgboost.*   \
+      xgboost/xgboost/native-libs/libomp.*       \
+      xgboost/xgboost/native-libs/libgomp.*      \
+      xgboost/xgboost/native-libs/libstdc++.*    \
+      xgboost/xgboost/native-libs/libxgbshim.*
 
 echo "--- installing the collection from candidates (no Nix, no env var) ---"
 unset XGBOOST_NATIVE_LIB_PATH || true

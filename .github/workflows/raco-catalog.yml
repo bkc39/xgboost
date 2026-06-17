@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATE_DIR="xgboost/native-libs/candidates/${{ matrix.platform }}"
+          CANDIDATE_DIR="xgboost/xgboost/native-libs/candidates/${{ matrix.platform }}"
           for lib in "$CANDIDATE_DIR"/lib*.so*; do
             [ -f "$lib" ] || continue
             echo "=== $lib ===" && ldd "$lib" || true
@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATE_DIR="xgboost/native-libs/candidates/${{ matrix.platform }}"
+          CANDIDATE_DIR="xgboost/xgboost/native-libs/candidates/${{ matrix.platform }}"
           for lib in "$CANDIDATE_DIR"/lib*.dylib; do
             [ -f "$lib" ] || continue
             echo "=== $lib ===" && otool -L "$lib"

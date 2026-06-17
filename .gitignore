@@ -1,14 +1,29 @@
 result
 result-*
 .racket-user/
+.racket-user-cuda/
 cpp/build/
-xgboost/native-libs/libxgbcompat.*
-xgboost/native-libs/libxgboost.*
-xgboost/native-libs/candidates/linux-cuda/
+xgboost/xgboost/native-libs/libxgbcompat.*
+xgboost/xgboost/native-libs/libxgboost.*
+xgboost/xgboost/native-libs/libgomp.*
+xgboost/xgboost/native-libs/libstdc++.*
+xgboost/xgboost/native-libs/libxgbshim.*
+xgboost/xgboost/native-libs/libomp.*
+xgboost/xgboost/native-libs/candidates/linux-cuda/
 **/compiled/
 
-# Scribble-rendered documentation output (source is xgboost/scribblings/).
-xgboost/doc/
+# Scribble-rendered documentation output (source is xgboost/xgboost-doc/).
+xgboost/xgboost-doc/doc/
+
+# Stray Scribble render output if the manual is built at the repo root.
+/xgboost.html
+/manual-fonts.css
+/manual-racket.css
+/manual-racket.js
+/manual-style.css
+/racket.css
+/scribble.css
+/scribble-common.js
 
 # Local-only planning notes; agents may drop plan files here without committing.
 plans/

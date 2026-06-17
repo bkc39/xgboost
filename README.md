@@ -76,7 +76,7 @@ dependency reasons.
 ### Building the native library locally
 
 `scripts/build-so.sh` builds `libxgbcompat` plus its bundled dependencies and
-stages them under `xgboost/native-libs/candidates/<platform>/`, so a plain
+stages them under `xgboost/xgboost/native-libs/candidates/<platform>/`, so a plain
 `raco pkg install` works afterwards without Nix. Run it from inside `nix
 develop`:
 
@@ -109,10 +109,13 @@ The `Nix checks` CI workflow runs `resyntax analyze` as a gate, so run
 
 - `cpp/` - C++ wrapper library (`libxgbcompat`) built with CMake, links against `pkgs.xgboost`.
 - `examples/` - runnable examples; selected fast RackUnit-backed examples run by default checks.
-- `xgboost/main.rkt` - high-level root API for `(require xgboost)`.
-- `xgboost/foreign.rkt` - contracted low-level Racket wrappers.
-- `xgboost/foreign/raw.rkt` - direct C FFI bindings.
-- `xgboost/private/` - native library installer implementation.
+- `xgboost/` - the multi-collection package (`collection 'multi`); install with `raco pkg install ./xgboost`.
+- `xgboost/xgboost/` - the `xgboost` code collection.
+- `xgboost/xgboost/main.rkt` - high-level root API for `(require xgboost)`.
+- `xgboost/xgboost/foreign.rkt` - contracted low-level Racket wrappers.
+- `xgboost/xgboost/foreign/raw.rkt` - direct C FFI bindings.
+- `xgboost/xgboost/private/` - native library installer implementation.
+- `xgboost/xgboost-doc/` - the `xgboost-doc` documentation collection (Scribble manual).
 - `flake.nix` - `cpp` and `racket` derivations.
 
 See `AGENTS.md` for architecture notes and the full set of build/test commands.

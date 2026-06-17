@@ -189,8 +189,8 @@
               mkdir -p $PLTUSERHOME
 
               # Pre-populate native-libs/ so define-runtime-path works during testing
-              mkdir -p ./xgboost/native-libs
-              cp ${cpp}/lib/libxgbcompat.* ./xgboost/native-libs/
+              mkdir -p ./xgboost/xgboost/native-libs
+              cp ${cpp}/lib/libxgbcompat.* ./xgboost/xgboost/native-libs/
 
               raco pkg install --batch --deps fail --no-setup --copy --scope user \
                 --name xgboost ./xgboost
@@ -240,7 +240,7 @@
             name = "copy-native-libs";
             runtimeInputs = [ pkgs.patchelf ];
             text = ''
-              DEST="$(pwd)/xgboost/native-libs"
+              DEST="$(pwd)/xgboost/xgboost/native-libs"
               mkdir -p "$DEST"
               cp -v --no-preserve=mode ${cpp}/lib/libxgbcompat.* "$DEST/"
               cp -v --no-preserve=mode ${pkgs.xgboost}/lib/libxgboost.so "$DEST/"
@@ -296,7 +296,7 @@
             name = "copy-native-libs-cuda";
             runtimeInputs = [ pkgs-cuda.patchelf ];
             text = ''
-              DEST="$(pwd)/xgboost/native-libs"
+              DEST="$(pwd)/xgboost/xgboost/native-libs"
               mkdir -p "$DEST"
               cp -v --no-preserve=mode ${cpp-cuda}/lib/libxgbcompat.* "$DEST/"
               cp -v --no-preserve=mode ${pkgs-cuda.xgboost}/lib/libxgboost.so "$DEST/"
@@ -364,8 +364,8 @@
               if [ ! -f "$deps_stamp" ]; then
                 echo "Installing Racket package (link mode, Racket ''${_rkt_ver})..."
                 mkdir -p "$PLTUSERHOME"
-                mkdir -p ./xgboost/native-libs
-                cp ${cpp}/lib/libxgbcompat.* ./xgboost/native-libs/ 2>/dev/null || true
+                mkdir -p ./xgboost/xgboost/native-libs
+                cp ${cpp}/lib/libxgbcompat.* ./xgboost/xgboost/native-libs/ 2>/dev/null || true
                 raco pkg install --batch --auto --no-setup --link --scope user --skip-installed \
                   --name xgboost "$PWD/xgboost"
                 raco setup --no-docs --pkgs xgboost
@@ -414,8 +414,8 @@
               if [ ! -f "$deps_stamp" ]; then
                 echo "Installing Racket package (link mode, CUDA build, Racket ''${_rkt_ver})..."
                 mkdir -p "$PLTUSERHOME"
-                mkdir -p ./xgboost/native-libs
-                cp ${cpp-cuda}/lib/libxgbcompat.* ./xgboost/native-libs/ 2>/dev/null || true
+                mkdir -p ./xgboost/xgboost/native-libs
+                cp ${cpp-cuda}/lib/libxgbcompat.* ./xgboost/xgboost/native-libs/ 2>/dev/null || true
                 raco pkg install --batch --auto --no-setup --link --scope user --skip-installed \
                   --name xgboost "$PWD/xgboost"
                 raco setup --no-docs --pkgs xgboost

@@ -67,7 +67,7 @@ The `Nix checks` workflow runs `resyntax analyze` as a CI gate (the
 run `resyntax fix` before pushing.
 
 `scripts/build-so.sh` builds the native library and stages it under
-`xgboost/native-libs/candidates/<platform>/`. After running it, a plain
+`xgboost/xgboost/native-libs/candidates/<platform>/`. After running it, a plain
 `raco pkg install` works without Nix:
 
 ```bash
@@ -106,9 +106,9 @@ candidates, no Nix environment, no XGBOOST_NATIVE_LIB_PATH.
 # Start from a clean slate inside nix develop (provides racket)
 nix develop --command bash -c "
   raco pkg remove xgboost 2>/dev/null || true
-  rm -f xgboost/native-libs/libxgbcompat.* \
-        xgboost/native-libs/libxgboost.*   \
-        xgboost/native-libs/libgomp.so.1
+  rm -f xgboost/xgboost/native-libs/libxgbcompat.* \
+        xgboost/xgboost/native-libs/libxgboost.*   \
+        xgboost/xgboost/native-libs/libgomp.so.1
   raco pkg install --name xgboost ./xgboost
   raco test xgboost/
   raco test \
@@ -153,25 +153,35 @@ racket examples/25-cuda-classification.rkt
 
 ### Racket
 
-The Racket side is split into small, logically coherent modules. Every
-top-level module path is a thin *re-export facade*; the implementation lives
-in sub-collection modules (target ≤ 500 lines/file).
+The repository ships a single multi-collection package rooted at `xgboost/`
+(`xgboost/info.rkt` declares `collection 'multi` plus package metadata and the
+native-library pre-install hook). It provides two collections:
 
-- `xgboost/info.rkt` - package metadata and native-library pre-install hook.
-- `xgboost/main.rkt` - facade for the high-level API; re-exports `core/*`.
-- `xgboost/core/*.rkt` - high-level implementation: `coerce`, `global`,
+- `xgboost/xgboost/` - the `xgboost` code collection (require path `xgboost`).
+- `xgboost/xgboost-doc/` - the `xgboost-doc` documentation collection
+  (`xgboost.scrbl`); rendered output lands in `xgboost/xgboost-doc/doc/`.
+
+`raco pkg install ./xgboost` installs both. `(require xgboost)` and
+`(require xgboost/foreign[/raw])` are unchanged. The code collection is split
+into small, logically coherent modules; every top-level module path is a thin
+*re-export facade*, with the implementation in sub-collection modules
+(target ≤ 500 lines/file).
+
+- `xgboost/xgboost/info.rkt` - collection-level info (test timeouts).
+- `xgboost/xgboost/main.rkt` - facade for the high-level API; re-exports `core/*`.
+- `xgboost/xgboost/core/*.rkt` - high-level implementation: `coerce`, `global`,
   `dmatrix`, `booster`, `train`, `predict`, `persist`.
-- `xgboost/foreign.rkt` - facade for the safe contracted layer; re-exports
+- `xgboost/xgboost/foreign.rkt` - facade for the safe contracted layer; re-exports
   `foreign/*` and defines the `unsafe` submodule.
-- `xgboost/foreign/*.rkt` - safe-layer implementation: `error`, `structs`,
+- `xgboost/xgboost/foreign/*.rkt` - safe-layer implementation: `error`, `structs`,
   `global`, `array-interface`, `dmatrix/{create,metadata,ops}`,
   `booster/{core,predict,persist,inspect}`.
-- `xgboost/foreign/raw.rkt` - facade for the direct C FFI layer; re-exports
+- `xgboost/xgboost/foreign/raw.rkt` - facade for the direct C FFI layer; re-exports
   `foreign/raw/{library,global,dmatrix,booster}.rkt` (`define-ffi-definer`
   bindings).
-- `xgboost/tests/*.rkt` - cross-cutting integration tests; module-local unit
+- `xgboost/xgboost/tests/*.rkt` - cross-cutting integration tests; module-local unit
   tests live in `module+ test` submodules.
-- `xgboost/private/install-xgboost-native.rkt` - copies `libxgbcompat.*` from `$XGBOOST_NATIVE_LIB_PATH/lib` into `native-libs/`.
+- `xgboost/xgboost/private/install-xgboost-native.rkt` - copies `libxgbcompat.*` from `$XGBOOST_NATIVE_LIB_PATH/lib` into `native-libs/`.
 - Selected files in `examples/` are assertion-backed examples; each exports
   `run-example`, prints concise output from `module+ main`, and verifies
   behavior from `module+ test`.
@@ -182,7 +192,7 @@ example-backed E2E test in the same change set unless that is impractical.
 ## CUDA Build (x86_64-linux only)
 
 ```bash
-# Build CUDA-enabled .so and install to xgboost/native-libs/
+# Build CUDA-enabled .so and install to xgboost/xgboost/native-libs/
 ./scripts/build-so.sh linux-cuda
 # or equivalently:
 nix build .#cpp-cuda

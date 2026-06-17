@@ -179,10 +179,10 @@ case "$TARGET" in
   linux)
     echo "Building CPU-only libxgbcompat for Linux..."
     nix build .#cpp --print-build-logs
-    mkdir -p xgboost/native-libs/candidates/linux-cpu
-    cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/native-libs/candidates/linux-cpu/
-    bundle_linux xgboost/native-libs/candidates/linux-cpu cpp
-    echo "Done. CPU .so installed to xgboost/native-libs/candidates/linux-cpu/"
+    mkdir -p xgboost/xgboost/native-libs/candidates/linux-cpu
+    cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/xgboost/native-libs/candidates/linux-cpu/
+    bundle_linux xgboost/xgboost/native-libs/candidates/linux-cpu cpp
+    echo "Done. CPU .so installed to xgboost/xgboost/native-libs/candidates/linux-cpu/"
     ;;
 
   linux-cuda)
@@ -193,10 +193,10 @@ case "$TARGET" in
     fi
     echo "Building CUDA-enabled libxgbcompat for Linux (x86_64)..."
     nix build .#cpp-cuda --print-build-logs
-    mkdir -p xgboost/native-libs/candidates/linux-cuda
-    cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/native-libs/candidates/linux-cuda/
-    bundle_linux xgboost/native-libs/candidates/linux-cuda cpp-cuda
-    echo "Done. CUDA .so installed to xgboost/native-libs/candidates/linux-cuda/"
+    mkdir -p xgboost/xgboost/native-libs/candidates/linux-cuda
+    cp -v --no-preserve=mode result/lib/libxgbcompat.* xgboost/xgboost/native-libs/candidates/linux-cuda/
+    bundle_linux xgboost/xgboost/native-libs/candidates/linux-cuda cpp-cuda
+    echo "Done. CUDA .so installed to xgboost/xgboost/native-libs/candidates/linux-cuda/"
     # The CUDA libxgboost.so is ~140 MB, exceeding GitHub's 100 MB per-file
     # limit, so the unpacked dir stays gitignored.  Ship a reproducible
     # gzip tarball instead; the pre-installer extracts it at raco install.
@@ -204,9 +204,9 @@ case "$TARGET" in
     tar --sort=name \
         --mtime='2026-05-10 22:00:00 UTC' \
         --owner=0 --group=0 --numeric-owner \
-        -czf xgboost/native-libs/candidates/linux-cuda.tar.gz \
-        -C xgboost/native-libs/candidates linux-cuda
-    echo "Tarball: $(ls -lh xgboost/native-libs/candidates/linux-cuda.tar.gz | awk '{print $5}')"
+        -czf xgboost/xgboost/native-libs/candidates/linux-cuda.tar.gz \
+        -C xgboost/xgboost/native-libs/candidates linux-cuda
+    echo "Tarball: $(ls -lh xgboost/xgboost/native-libs/candidates/linux-cuda.tar.gz | awk '{print $5}')"
     ;;
 
   linux-aarch64)
@@ -217,11 +217,11 @@ case "$TARGET" in
     fi
     echo "Cross-compiling CPU-only libxgbcompat for aarch64-linux..."
     nix build .#cpp-aarch64 --print-build-logs
-    mkdir -p xgboost/native-libs/candidates/linux-aarch64
+    mkdir -p xgboost/xgboost/native-libs/candidates/linux-aarch64
     cp -v --no-preserve=mode result/lib/libxgbcompat.* \
-      xgboost/native-libs/candidates/linux-aarch64/
-    bundle_linux xgboost/native-libs/candidates/linux-aarch64 cpp-aarch64 aarch64
-    echo "Done. aarch64 .so installed to xgboost/native-libs/candidates/linux-aarch64/"
+      xgboost/xgboost/native-libs/candidates/linux-aarch64/
+    bundle_linux xgboost/xgboost/native-libs/candidates/linux-aarch64 cpp-aarch64 aarch64
+    echo "Done. aarch64 .so installed to xgboost/xgboost/native-libs/candidates/linux-aarch64/"
     ;;
 
   darwin)
@@ -231,10 +231,10 @@ case "$TARGET" in
     fi
     echo "Building CPU-only libxgbcompat for macOS..."
     nix build .#cpp --print-build-logs
-    mkdir -p xgboost/native-libs/candidates/darwin
-    cp -v result/lib/libxgbcompat.* xgboost/native-libs/candidates/darwin/
-    bundle_darwin xgboost/native-libs/candidates/darwin
-    echo "Done. CPU .dylib installed to xgboost/native-libs/candidates/darwin/"
+    mkdir -p xgboost/xgboost/native-libs/candidates/darwin
+    cp -v result/lib/libxgbcompat.* xgboost/xgboost/native-libs/candidates/darwin/
+    bundle_darwin xgboost/xgboost/native-libs/candidates/darwin
+    echo "Done. CPU .dylib installed to xgboost/xgboost/native-libs/candidates/darwin/"
     ;;
 
   *)

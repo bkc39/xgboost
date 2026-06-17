@@ -3,7 +3,7 @@
 @(require (for-label ffi/vector
                      racket/base
                      racket/contract
-                     "../main.rkt"))
+                     xgboost))
 
 @title{XGBoost}
 
