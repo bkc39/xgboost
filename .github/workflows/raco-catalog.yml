@@ -22,11 +22,17 @@ jobs:
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             racket_arch: arm64
+            # polars has no aarch64-linux native lib yet, so it can't load on
+            # this platform. Non-blocking until bkc39/rkt-polars#28 ships an
+            # aarch64 candidate; the job still runs so we see when it starts
+            # passing.
+            allow-failure: true
           - os: macos-latest
             platform: darwin
             racket_arch: arm64
 
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.allow-failure || false }}
 
     steps:
       - uses: actions/checkout@v4
