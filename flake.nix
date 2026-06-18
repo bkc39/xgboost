@@ -184,6 +184,22 @@
           #
           # Bump `version` (or update `outputHash`) when the catalog versions of
           # polars or its deps change.
+          # polars source, used only for its prebuilt `libcompat` candidates.
+          # We stage the lib ourselves (see RKT_POLARS_COMPAT_LIB_PATH below)
+          # because nixpkgs' darwin racket runs `raco setup` in
+          # cross-installation mode, where polars' own platform auto-detection
+          # picks the wrong candidate.
+          polarsSrc = pkgs.fetchFromGitHub {
+            owner = "bkc39";
+            repo = "rkt-polars";
+            rev = "be63903760e5fb795df337eebf356fed2b3f0c13";
+            hash = "sha256-fQXET7Vuf5OCVjA5Mso2uq6kbSVoin7lXNq1kiyb+mE=";
+          };
+          polarsCandidateDir =
+            if pkgs.stdenv.isDarwin
+            then "${polarsSrc}/polars/native-libs/candidates/darwin"
+            else "${polarsSrc}/polars/native-libs/candidates/linux";
+
           polarsScope = pkgs.stdenvNoCC.mkDerivation {
             pname = "rkt-polars-scope";
             version = "unstable-2026-06-17";
@@ -237,6 +253,15 @@
               # resolves fine, native lib included.
               cp -r ${polarsScope}/. $PLTUSERHOME/
               chmod -R u+w $PLTUSERHOME
+
+              # Stage polars' native lib explicitly via its supported override.
+              # nixpkgs' darwin racket runs `raco setup` as a cross-installation,
+              # where polars' own candidate auto-detection picks the wrong
+              # platform; pointing RKT_POLARS_COMPAT_LIB_PATH at the right
+              # candidate makes its pre-install copy the correct libcompat.
+              mkdir -p $TMPDIR/polars-compat/lib
+              cp ${polarsCandidateDir}/libcompat.* $TMPDIR/polars-compat/lib/
+              export RKT_POLARS_COMPAT_LIB_PATH=$TMPDIR/polars-compat
 
               # Pre-populate native-libs/ so define-runtime-path works during testing
               mkdir -p ./xgboost/native-libs
