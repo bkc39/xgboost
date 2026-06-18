@@ -204,10 +204,16 @@
               # pre-install (which stages the right libcompat for the platform).
               raco pkg install --no-setup --batch --auto --scope user --no-docs \
                 polars tzdata
+
+              # The package download cache holds timestamp-named blobs, the only
+              # non-deterministic part of the output. Drop it so the FOD hash is
+              # stable (and identical across platforms, since --no-setup leaves
+              # only platform-independent sources and embeds no absolute paths).
+              rm -rf "$out/.cache"
             '';
             outputHashMode = "recursive";
             outputHashAlgo = "sha256";
-            outputHash = "sha256-UYsJEXP3+Kwl4OxbkCqxg/nBU8Lrf9Q/EuLhrtFUvKI=";
+            outputHash = "sha256-qw0smrzpcUPhvUGw1Q4SsGt9md/adz4FIMe/Jc0MyT8=";
           };
 
           racket = pkgs.stdenv.mkDerivation {
