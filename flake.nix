@@ -173,6 +173,65 @@
             '';
           };
 
+          # The `polars` runtime dependency (and its transitive Racket deps:
+          # gregor-lib, threading-lib, tzinfo, memoize-lib, cldr-*) are not in
+          # nixpkgs, and the build sandbox has no network to fetch them from the
+          # package catalog. This fixed-output derivation installs them into a
+          # user scope *with* network access (FODs are granted it); the result
+          # is a populated PLTUSERHOME that the `racket` build copies in before
+          # installing xgboost. No Rust build is needed — polars stages its
+          # prebuilt `libcompat` candidate during its own pre-install.
+          #
+          # Bump `version` (or update `outputHash`) when the catalog versions of
+          # polars or its deps change.
+          # polars source, used only for its prebuilt `libcompat` candidates.
+          # We stage the lib ourselves (see RKT_POLARS_COMPAT_LIB_PATH below)
+          # because nixpkgs' darwin racket runs `raco setup` in
+          # cross-installation mode, where polars' own platform auto-detection
+          # picks the wrong candidate.
+          polarsSrc = pkgs.fetchFromGitHub {
+            owner = "bkc39";
+            repo = "rkt-polars";
+            rev = "be63903760e5fb795df337eebf356fed2b3f0c13";
+            hash = "sha256-fQXET7Vuf5OCVjA5Mso2uq6kbSVoin7lXNq1kiyb+mE=";
+          };
+          polarsCandidateDir =
+            if pkgs.stdenv.isDarwin
+            then "${polarsSrc}/polars/native-libs/candidates/darwin"
+            else "${polarsSrc}/polars/native-libs/candidates/linux";
+
+          polarsScope = pkgs.stdenvNoCC.mkDerivation {
+            pname = "rkt-polars-scope";
+            version = "unstable-2026-06-17";
+            dontUnpack = true;
+            nativeBuildInputs = [ pkgs.racket pkgs.cacert ];
+            buildCommand = ''
+              export PLTUSERHOME="$out"
+              export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              mkdir -p "$out"
+              # `tzdata` ships the zoneinfo database as a Racket collection
+              # (`tzdata/zoneinfo`), which gregor's `tzinfo` needs at load time;
+              # the Nix sandbox has no system /usr/share/zoneinfo.
+              #
+              # `--no-setup` installs sources only (no machine-code .zo, no
+              # native-lib staging), so the output is platform-independent and a
+              # single outputHash works across Linux/macOS. The consuming
+              # `racket` build runs `raco setup` to compile and to fire polars'
+              # pre-install (which stages the right libcompat for the platform).
+              raco pkg install --no-setup --batch --auto --scope user --no-docs \
+                polars tzdata
+
+              # The package download cache holds timestamp-named blobs, the only
+              # non-deterministic part of the output. Drop it so the FOD hash is
+              # stable (and identical across platforms, since --no-setup leaves
+              # only platform-independent sources and embeds no absolute paths).
+              rm -rf "$out/.cache"
+            '';
+            outputHashMode = "recursive";
+            outputHashAlgo = "sha256";
+            outputHash = "sha256-qw0smrzpcUPhvUGw1Q4SsGt9md/adz4FIMe/Jc0MyT8=";
+          };
+
           racket = pkgs.stdenv.mkDerivation {
             pname = "xgboost";
             inherit version;
@@ -188,6 +247,22 @@
               export XGBOOST_NATIVE_LIB_PATH=${cpp}
               mkdir -p $PLTUSERHOME
 
+              # Seed the user scope with polars + its deps (built in the
+              # network-enabled polarsScope FOD), so xgboost's `--deps fail`
+              # install is satisfied offline. A relocated raco addon tree
+              # resolves fine, native lib included.
+              cp -r ${polarsScope}/. $PLTUSERHOME/
+              chmod -R u+w $PLTUSERHOME
+
+              # Stage polars' native lib explicitly via its supported override.
+              # nixpkgs' darwin racket runs `raco setup` as a cross-installation,
+              # where polars' own candidate auto-detection picks the wrong
+              # platform; pointing RKT_POLARS_COMPAT_LIB_PATH at the right
+              # candidate makes its pre-install copy the correct libcompat.
+              mkdir -p $TMPDIR/polars-compat/lib
+              cp ${polarsCandidateDir}/libcompat.* $TMPDIR/polars-compat/lib/
+              export RKT_POLARS_COMPAT_LIB_PATH=$TMPDIR/polars-compat
+
               # Pre-populate native-libs/ so define-runtime-path works during testing
               mkdir -p ./xgboost/native-libs
               cp ${cpp}/lib/libxgbcompat.* ./xgboost/native-libs/
@@ -195,7 +270,13 @@
               raco pkg install --batch --deps fail --no-setup --copy --scope user \
                 --name xgboost ./xgboost
 
-              raco setup --no-docs --pkgs xgboost
+              # Compile xgboost, polars, and tzdata (the FOD installed their
+              # sources only). Setting up polars fires its pre-install, which
+              # stages the platform's libcompat; tzdata must be set up so its
+              # committed zoneinfo collection is resolvable (gregor/tzinfo need
+              # it at load time, and the sandbox has no /usr/share/zoneinfo).
+              # gregor/tzinfo/cldr-* compile on first use.
+              raco setup --no-docs --pkgs xgboost polars tzdata
 
               runHook postBuild
             '';

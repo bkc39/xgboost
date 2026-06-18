@@ -23,8 +23,11 @@
          (only-in "foreign.rkt"
                   dmatrix? dmatrix-rows dmatrix-cols
                   booster? booster-cache)
+         ;; DataFrame predicates for the polars bridge contracts.
+         (only-in polars dataframe? series?)
          "core/global.rkt"
          "core/dmatrix.rkt"
+         "core/dataframe.rkt"
          "core/booster.rkt"
          "core/predict.rkt"
          "core/train.rkt"
@@ -62,6 +65,17 @@
         (#:format (or/c #f "libsvm" "csv")
          #:silent? any/c)
         dmatrix?)]
+  ;; Polars DataFrame bridge (see core/dataframe.rkt).
+  [dataframe->dmatrix
+   (->* (dataframe?)
+        (#:labels any/c
+         #:weights any/c
+         #:feature-columns (or/c #f (listof string?))
+         #:missing real?)
+        dmatrix?)]
+  [series->f32vector (-> series? f32vector?)]
+  [dataframe-column->f32vector
+   (-> dataframe? (or/c string? exact-nonnegative-integer?) f32vector?)]
   [dmatrix-rows (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix-cols (-> dmatrix? exact-nonnegative-integer?)]
   [dmatrix->list (-> dmatrix? (listof (listof real?)))]

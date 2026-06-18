@@ -32,7 +32,9 @@ rm -f xgboost/native-libs/libxgbcompat.* \
       xgboost/native-libs/libxgbshim.*
 
 echo "--- installing from candidates ---"
-"$RACO" pkg install --name xgboost ./xgboost
+# --auto installs declared deps (e.g. polars) non-interactively; without it
+# raco prompts and a non-TTY CI shell cancels the install.
+"$RACO" pkg install --auto --name xgboost ./xgboost
 
 echo "--- raco test xgboost/ ---"
 "$RACO" test xgboost/

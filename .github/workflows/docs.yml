@@ -20,6 +20,10 @@ jobs:
           version: '8.17'
           variant: 'CS'
           distribution: 'full'
+      - name: Install polars (xgboost requires it for label phase)
+        # xgboost now requires `polars` (the DataFrame bridge), so resolving the
+        # `xgboost` collection for the label phase needs `polars` installed too.
+        run: raco pkg install --auto --batch --no-docs polars
       - name: Render Scribble docs
         # The literate Examples chapter cross-references the `xgboost` collection
         # by name (`(for-label xgboost)`, and `(require xgboost)` inside the woven
