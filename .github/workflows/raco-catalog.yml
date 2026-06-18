@@ -22,17 +22,16 @@ jobs:
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             racket_arch: arm64
-            # polars has no aarch64-linux native lib yet, so it can't load on
-            # this platform. Non-blocking until bkc39/rkt-polars#28 ships an
-            # aarch64 candidate; the job still runs so we see when it starts
-            # passing.
-            allow-failure: true
+            # polars has no aarch64-linux native lib yet, so xgboost (which now
+            # requires polars) can't be installed/tested here. Skip the
+            # polars-dependent install+test step until bkc39/rkt-polars#28 ships
+            # an aarch64 candidate; the portability check still runs.
+            skip-polars-test: true
           - os: macos-latest
             platform: darwin
             racket_arch: arm64
 
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.allow-failure || false }}
 
     steps:
       - uses: actions/checkout@v4
@@ -98,7 +97,15 @@ jobs:
           done
           echo "Portability check passed"
 
+      - name: Skip install+test (polars unsupported on this platform)
+        if: ${{ matrix.skip-polars-test }}
+        shell: bash
+        run: |
+          echo "Skipping install+test: polars has no ${{ matrix.platform }} native library."
+          echo "Tracked in bkc39/rkt-polars#28; re-enable once an aarch64 candidate ships."
+
       - name: Install and test
+        if: ${{ !matrix.skip-polars-test }}
         shell: bash
         run: bash scripts/test-local.sh
 
