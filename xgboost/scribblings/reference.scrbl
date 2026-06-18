@@ -3,6 +3,7 @@
 @(require (for-label ffi/vector
                      racket/base
                      racket/contract
+                     (only-in polars dataframe? series?)
                      "../main.rkt"))
 
 @title[#:tag "reference"]{API Reference}
@@ -78,6 +79,11 @@ Rows must be rectangular. Labels and weights may be lists, vectors, or
 @racket[f32vector?] values, and their lengths must match the inferred row
 count.
 
+@racket[data] may also be a Polars @racket[dataframe?], in which case
+@racket[make-dmatrix] delegates to @racket[dataframe->dmatrix]: every column is
+treated as a feature unless named by @racket[#:labels] or @racket[#:weights]
+(which then accept a column-name string).
+
 DMatrix lifetimes are managed by Racket's GC: the underlying XGBoost handle
 is reclaimed once the wrapper is unreachable. There is no public free
 operation; if you need deterministic release for a long-lived workload,
@@ -119,6 +125,46 @@ must have the same length.
 Loads a DMatrix from a file path or XGBoost URI. When @racket[#:format] is a
 string, it is appended as a query parameter (for example, libsvm-format
 files load as @racket[#:format "libsvm"]).
+}
+
+@subsection{Polars DataFrames}
+
+A Polars @racket[dataframe?] can stand in for a DMatrix anywhere feature data is
+expected: @racket[make-dmatrix], @racket[train], and @racket[predict] all accept
+one directly (auto-detecting it and routing through @racket[dataframe->dmatrix]).
+These conversion procedures are also exported for explicit use. The
+@racketmodname[polars] package must be installed; it is a dependency of
+@racketmodname[xgboost].
+
+@defproc[(dataframe->dmatrix [df dataframe?]
+                             [#:labels labels any/c #f]
+                             [#:weights weights any/c #f]
+                             [#:feature-columns feature-columns
+                                                (or/c #f (listof string?)) #f]
+                             [#:missing missing real? +nan.0])
+         dmatrix?]{
+Converts a Polars DataFrame to a DMatrix, building it column-major (no transpose)
+and carrying the source column names through as feature names.
+
+@racket[#:labels] and @racket[#:weights] each accept either a column-name string
+--- in which case that column is pulled out of @racket[df] and excluded from the
+features --- or an ordinary sequence (list, vector, or @racket[f32vector?])
+supplied alongside the frame. @racket[#:feature-columns], when given, pins the
+feature set to exactly those columns; otherwise every column except the
+label/weight columns is used. Non-numeric (or null) cells in a chosen column
+raise rather than coercing silently.
+}
+
+@defproc[(series->f32vector [s series?]) f32vector?]{
+Reads a numeric Polars series into an @racket[f32vector?]. Raises if any cell is
+non-numeric or null.
+}
+
+@defproc[(dataframe-column->f32vector [df dataframe?]
+                                      [col (or/c string? exact-nonnegative-integer?)])
+         f32vector?]{
+Extracts one column of @racket[df] (by name or position) as an
+@racket[f32vector?].
 }
 
 @defproc[(dmatrix-rows [dm dmatrix?]) exact-nonnegative-integer?]{
@@ -223,7 +269,7 @@ Returns @racket[#t] when @racket[v] is a high-level Booster value produced by
 @racket[train], @racket[load-model], or @racket[load-model-from-bytes].
 }
 
-@defproc[(train [dtrain dmatrix?]
+@defproc[(train [dtrain (or/c dmatrix? dataframe?)]
                 [#:params params any/c '()]
                 [#:rounds rounds exact-nonnegative-integer? 10]
                 [#:evals evals (listof (cons/c string? dmatrix?)) '()]
@@ -234,9 +280,15 @@ Returns @racket[#t] when @racket[v] is a high-level Booster value produced by
                 [#:max-depth max-depth (or/c #f any/c) #f]
                 [#:num-class num-class (or/c #f any/c) #f]
                 [#:eval-metric eval-metric (or/c #f any/c) #f]
-                [#:verbosity verbosity (or/c #f any/c) #f])
+                [#:verbosity verbosity (or/c #f any/c) #f]
+                [#:labels labels (or/c #f any/c) #f])
          booster?]{
 Trains a Booster for @racket[rounds] boosting rounds.
+
+@racket[dtrain] may be a Polars @racket[dataframe?] instead of a DMatrix; it is
+converted with @racket[dataframe->dmatrix], with @racket[#:labels] naming the
+label column (or supplying a label sequence). @racket[#:labels] is ignored when
+@racket[dtrain] is already a DMatrix, where labels ride on the matrix.
 
 @racket[params] may be a hash or association list. Parameter keys may be
 strings, symbols, or keywords. Symbol and keyword keys are converted to
@@ -441,7 +493,7 @@ Predicts on column-major @racket[f32vector?] columns.
 }
 
 @defproc[(predict [booster booster?]
-                  [dmat dmatrix?]
+                  [dmat (or/c dmatrix? dataframe?)]
                   [#:output output (or/c 'value 'margin 'contribs
                                           'approx-contribs 'interactions
                                           'approx-interactions 'leaf)
@@ -449,7 +501,9 @@ Predicts on column-major @racket[f32vector?] columns.
                   [#:iteration-end iteration-end exact-nonnegative-integer? 0]
                   [#:as as (or/c 'list 'f32vector) 'list])
          (or/c (listof real?) f32vector?)]{
-Runs prediction for @racket[dmat].
+Runs prediction for @racket[dmat], which may be a DMatrix or a Polars
+@racket[dataframe?] (converted with @racket[dataframe->dmatrix], every column
+used as a feature --- pass a label-free frame).
 
 By default, predictions are returned as a list. Pass @racket[#:as 'f32vector]
 to receive the Racket @racket[f32vector?] copied from XGBoost output.

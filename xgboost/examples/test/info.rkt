@@ -31,6 +31,7 @@
     ("05-train-with-eval.rkt" 300)
     ("06-iris.rkt" 300)
     ("27-get-started.rkt" 300)
+    ("30-iris-polars.rkt" 300)
     ("07-robust-regression.rkt" 300)
     ("08-quantile-regression.rkt" 300)
     ("09-poisson-bikes.rkt" 300)

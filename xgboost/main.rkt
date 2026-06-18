@@ -26,11 +26,14 @@
          ;; DataFrame predicates for the polars bridge contracts.
          (only-in polars dataframe? series?)
          "core/global.rkt"
-         "core/dmatrix.rkt"
+         ;; make-dmatrix/train/predict are wrapped below to accept a polars
+         ;; DataFrame anywhere a DMatrix is expected; rename-in passes every
+         ;; other identifier from these modules through unchanged.
+         (rename-in "core/dmatrix.rkt" [make-dmatrix core:make-dmatrix])
          "core/dataframe.rkt"
          "core/booster.rkt"
-         "core/predict.rkt"
-         "core/train.rkt"
+         (rename-in "core/predict.rkt" [predict core:predict])
+         (rename-in "core/train.rkt" [train core:train])
          "core/persist.rkt")
 
 (provide
@@ -159,7 +162,7 @@
          #:as (or/c 'list 'f32vector))
         (or/c (listof real?) f32vector?))]
   [train
-   (->* (dmatrix?)
+   (->* ((or/c dmatrix? dataframe?))
         (#:params any/c
          #:rounds exact-nonnegative-integer?
          #:evals (listof (cons/c string? dmatrix?))
@@ -169,7 +172,9 @@
          #:max-depth (or/c #f any/c)
          #:num-class (or/c #f any/c)
          #:eval-metric (or/c #f any/c)
-         #:verbosity (or/c #f any/c))
+         #:verbosity (or/c #f any/c)
+         ;; DataFrame path only: column name (or sequence) for the labels.
+         #:labels (or/c #f any/c))
         booster?)]
   [booster-set-param! (-> booster? any/c any/c void?)]
   [booster-update-one-iter! (-> booster? exact-integer? dmatrix? void?)]
@@ -178,7 +183,7 @@
   [booster->bytes (-> booster? bytes?)]
   [bytes->booster (-> bytes? booster?)]
   [predict
-   (->* (booster? dmatrix?)
+   (->* (booster? (or/c dmatrix? dataframe?))
         (#:output (or/c 'value 'margin 'contribs 'approx-contribs
                         'interactions 'approx-interactions 'leaf)
          #:iteration-end exact-nonnegative-integer?
@@ -198,6 +203,77 @@
  dmatrix?
  booster?)
 
+;; ---------------------------------------------------------------------------
+;; DataFrame-aware facade wrappers
+;;
+;; The public make-dmatrix/train/predict accept a polars DataFrame anywhere a
+;; DMatrix is expected, delegating to the core/dataframe.rkt bridge.  Dispatch
+;; lives here at the facade (not in core/dmatrix.rkt) to keep the core require
+;; graph one-directional: dataframe.rkt already requires dmatrix.rkt, so a
+;; reverse dependency would form a cycle.
+
+(define (make-dmatrix data
+                      #:nrow [nrow #f]
+                      #:ncol [ncol #f]
+                      #:missing [missing +nan.0]
+                      #:labels [labels #f]
+                      #:weights [weights #f])
+  (if (dataframe? data)
+      (dataframe->dmatrix data
+                          #:labels labels
+                          #:weights weights
+                          #:missing missing)
+      (core:make-dmatrix data
+                         #:nrow nrow
+                         #:ncol ncol
+                         #:missing missing
+                         #:labels labels
+                         #:weights weights)))
+
+;; #:labels names the label column (or supplies a label sequence) when `data`
+;; is a DataFrame; it is ignored on the DMatrix path, where labels already
+;; ride on the matrix.
+(define (train data
+               #:params [params '()]
+               #:rounds [rounds 10]
+               #:evals [evals '()]
+               #:objective [objective #f]
+               #:objective-fn [objective-fn #f]
+               #:eta [eta #f]
+               #:max-depth [max-depth #f]
+               #:num-class [num-class #f]
+               #:eval-metric [eval-metric #f]
+               #:verbosity [verbosity #f]
+               #:labels [labels #f])
+  (define dtrain
+    (if (dataframe? data)
+        (dataframe->dmatrix data #:labels labels)
+        data))
+  (core:train dtrain
+              #:params params
+              #:rounds rounds
+              #:evals evals
+              #:objective objective
+              #:objective-fn objective-fn
+              #:eta eta
+              #:max-depth max-depth
+              #:num-class num-class
+              #:eval-metric eval-metric
+              #:verbosity verbosity))
+
+(define (predict b data
+                 #:output [output 'value]
+                 #:iteration-end [iteration-end 0]
+                 #:as [as 'list])
+  (define dpred
+    (if (dataframe? data)
+        (dataframe->dmatrix data)
+        data))
+  (core:predict b dpred
+                #:output output
+                #:iteration-end iteration-end
+                #:as as))
+
 (module+ main
   (printf "xgboost version: ~a\n" (xgboost-version))
   (define dtrain
@@ -214,3 +290,61 @@
            #:verbosity 0
            #:rounds 5))
   (printf "first prediction: ~a\n" (car (predict b dtrain))))
+
+(module+ test
+  ;; The DataFrame-aware facade must be a transparent alias for the explicit
+  ;; DMatrix path: training/predicting on a DataFrame yields bit-identical
+  ;; results to building the DMatrix by hand.
+  (require rackunit
+           (only-in polars dataframe series))
+
+  (define rows '((1.0 2.0 0.5)
+                 (2.0 1.0 1.5)
+                 (3.0 0.5 0.0)
+                 (0.5 3.0 2.0)))
+  (define ys '(3.5 3.5 6.5 2.0))
+
+  ;; Feature columns a/b/c carry the same values as `rows`; the training frame
+  ;; also carries the label column "y".  `feat-cols` is the matching
+  ;; label-free frame used for prediction (you have no labels at predict time).
+  (define a (series '(1.0 2.0 3.0 0.5) #:name "a"))
+  (define b-col (series '(2.0 1.0 0.5 3.0) #:name "b"))
+  (define c (series '(0.5 1.5 0.0 2.0) #:name "c"))
+  (define df (dataframe (list a b-col c (series ys #:name "y"))))
+  (define feat-df (dataframe (list a b-col c)))
+
+  (define (fit dtrain)
+    (train dtrain
+           #:objective "reg:squarederror"
+           #:max-depth 2
+           #:eta 0.2
+           #:verbosity 0
+           #:rounds 5))
+
+  (test-case "make-dmatrix dispatches on DataFrame"
+    (define dm (make-dmatrix df #:labels "y"))
+    (check-equal? (dmatrix-rows dm) 4)
+    (check-equal? (dmatrix-cols dm) 3 "label column excluded from features")
+    (check-equal? (dmatrix-label dm) ys))
+
+  (test-case "train/predict on a DataFrame match the explicit DMatrix path"
+    (define dm (make-dmatrix rows #:labels ys))
+    (define b-dm (fit dm))
+    (define b-df (fit (make-dmatrix df #:labels "y")))
+    ;; The two boosters are trained on identical data, so predictions agree
+    ;; whether the input is a DMatrix or a (label-free) DataFrame.
+    (define p-dm (predict b-dm dm))
+    (check-equal? (predict b-df feat-df) p-dm)
+    (check-equal? (predict b-dm feat-df) p-dm
+                  "predict on a DataFrame matches predict on the DMatrix"))
+
+  (test-case "train accepts a DataFrame directly via #:labels"
+    (define b-direct (train df
+                            #:labels "y"
+                            #:objective "reg:squarederror"
+                            #:max-depth 2
+                            #:eta 0.2
+                            #:verbosity 0
+                            #:rounds 5))
+    (define b-explicit (fit (make-dmatrix df #:labels "y")))
+    (check-equal? (predict b-direct feat-df) (predict b-explicit feat-df))))
