@@ -8,12 +8,13 @@
 ;; works" wherever feature data is expected.  Wiring this into `make-dmatrix`
 ;; / `train` / `predict` (auto-detecting a DataFrame) is handled separately.
 ;;
-;; Polars' public surface (`ref`, `len`, `column-names`) is imported under the
-;; `pl:` prefix to keep the very general names `ref`/`len` out of this module's
-;; namespace.
+;; We import only the polars bindings we use. A blanket `(require polars)` would
+;; also pull in its many `racket/base`-shadowing exports (`=`, `<`, `min`, `max`,
+;; `filter`, `sort`, `first`, `last`, `count`, ...) as ambiguous bindings, so we
+;; name exactly what we need instead.
 
 (require ffi/vector
-         (prefix-in pl: polars)
+         (only-in polars ref len column-names polars-null?)
          "coerce.rkt"
          "dmatrix.rkt")
 
@@ -25,21 +26,21 @@
 ;; (string columns, or Polars nulls) raise rather than silently coercing, so
 ;; type/missing-data problems surface at conversion time.
 (define (series->f32vector s #:who [who 'series->f32vector])
-  (define n (pl:len s))
+  (define n (len s))
   (define v (make-f32vector n))
   (for ([i (in-range n)])
-    (define x (pl:ref s i))
+    (define x (ref s i))
     (unless (real? x)
       (error who
              "column is not purely numeric: got ~v at row ~a~a"
              x i
-             (if (pl:polars-null? x) " (null)" "")))
+             (if (polars-null? x) " (null)" "")))
     (f32vector-set! v i (exact->inexact x)))
   v)
 
 ;; Extract one column (by name or index) of a DataFrame as an `f32vector`.
 (define (dataframe-column->f32vector df col)
-  (series->f32vector (pl:ref df col) #:who 'dataframe-column->f32vector))
+  (series->f32vector (ref df col) #:who 'dataframe-column->f32vector))
 
 ;; Convert a DataFrame to a DMatrix.
 ;;
@@ -59,7 +60,7 @@
   (define weight-col (and (string? weights) weights))
   (define feat-cols
     (or feature-columns
-        (for/list ([c (in-list (pl:column-names df))]
+        (for/list ([c (in-list (column-names df))]
                    #:unless (or (equal? c label-col) (equal? c weight-col)))
           c)))
   (when (null? feat-cols)
@@ -82,17 +83,17 @@
 
 (module+ test
   (require rackunit
-           (prefix-in pl: polars)
+           (only-in polars dataframe series)
            (only-in "../foreign.rkt" dmatrix-rows dmatrix-cols))
 
   (define df
-    (pl:dataframe
-     (list (pl:series '(1.0 2.0 3.0 4.0) #:name "f0")
-           (pl:series '(10.0 20.0 30.0 40.0) #:name "f1")
-           (pl:series '(0.0 1.0 1.0 0.0) #:name "y"))))
+    (dataframe
+     (list (series '(1.0 2.0 3.0 4.0) #:name "f0")
+           (series '(10.0 20.0 30.0 40.0) #:name "f1")
+           (series '(0.0 1.0 1.0 0.0) #:name "y"))))
 
   (test-case "series->f32vector reads numeric column"
-    (check-equal? (f32vector->list (series->f32vector (pl:ref df "f0")))
+    (check-equal? (f32vector->list (series->f32vector (ref df "f0")))
                   '(1.0 2.0 3.0 4.0)))
 
   (test-case "dataframe->dmatrix with label column"
@@ -110,6 +111,6 @@
 
   (test-case "non-numeric feature column raises"
     (define sdf
-      (pl:dataframe (list (pl:series '("a" "b") #:name "s")
-                          (pl:series '(1.0 2.0) #:name "y"))))
+      (dataframe (list (series '("a" "b") #:name "s")
+                          (series '(1.0 2.0) #:name "y"))))
     (check-exn exn:fail? (lambda () (dataframe->dmatrix sdf #:labels "y")))))
