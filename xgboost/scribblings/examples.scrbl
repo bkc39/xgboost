@@ -30,6 +30,7 @@ there.
 @lp-include["../examples/05-train-with-eval.rkt"]
 @lp-include["../examples/06-iris.rkt"]
 @lp-include["../examples/27-get-started.rkt"]
+@lp-include["../examples/30-iris-polars.rkt"]
 
 @; built-in and custom objectives
 @lp-include["../examples/07-robust-regression.rkt"]

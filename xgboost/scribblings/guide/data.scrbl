@@ -3,6 +3,7 @@
 @(require (for-label ffi/vector
                      racket/base
                      racket/contract
+                     (only-in polars dataframe?)
                      "../../main.rkt"))
 
 @title[#:tag "data"]{Data Interface}
@@ -42,6 +43,34 @@ You can attach labels (and weights) at construction time:
                 (0.5 3.0 2.0))
               #:labels '(3.5 3.5 6.5 2.0))
 ]
+
+@section{Polars DataFrames}
+
+A Polars @deftech{DataFrame} (a @racket[dataframe?] from
+@racketmodname[polars]) can be used wherever a DMatrix is expected:
+@racket[make-dmatrix], @racket[train], and @racket[predict] all detect a
+DataFrame and route it through @racket[dataframe->dmatrix]. Every column becomes a
+feature unless you name a label (or weight) column:
+
+@racketblock[
+(require xgboost
+         (only-in polars read-csv select))
+
+(code:comment "label by column name — \"species\" is pulled out of the features")
+(define df (read-csv "iris.csv"))
+(make-dmatrix df #:labels "species")
+
+(code:comment "or supply labels as a sequence alongside a feature-only frame")
+(define features
+  '("sepal_length" "sepal_width" "petal_length" "petal_width"))
+(make-dmatrix (select df features) #:labels '(0 1 2 0))
+]
+
+Columns must be numeric: a string column (such as a raw class label) raises
+unless excluded via @racket[#:labels] or a feature selection. For the full bridge
+contract, including @racket[#:feature-columns] and @racket[#:weights], see
+@racket[dataframe->dmatrix]; for an end-to-end model see the
+@secref["ex-iris-polars"] example.
 
 @section{Missing values}
 
